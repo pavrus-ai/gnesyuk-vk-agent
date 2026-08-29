@@ -57,12 +57,14 @@ def ai_text(prompt):
     log(f"GROQ_KEY: {'есть' if GROQ_KEY else 'НЕТ'} ({len(GROQ_KEY)} символов)")
     log(f"OPENROUTER_KEY: {'есть' if OR_KEY else 'НЕТ'} ({len(OR_KEY)} символов)")
 
-    # === GROQ: актуальные бесплатные модели ===
+    # === GROQ: актуальные модели 2026 ===
     groq_models = [
         "llama-3.3-70b-versatile",
         "llama-3.1-8b-instant",
         "gemma2-9b-it",
-        "mixtral-8x7b-32768"
+        "mixtral-8x7b-32768",
+        "llama3-70b-8192",
+        "llama3-8b-8192"
     ]
     for model in groq_models:
         try:
@@ -70,17 +72,22 @@ def ai_text(prompt):
             if result:
                 log(f"✅ Groq ({model}): успех")
                 return result
+            else:
+                log(f"⚠️ Groq ({model}): пустой ответ")
         except Exception as e:
             log(f"❌ Groq ({model}) исключение: {e}")
 
-    # === OPENROUTER: актуальные бесплатные модели (авто-выбор) ===
+    # === OPENROUTER: модели, которые сам сервис предложил как замену + другие бесплатные ===
     or_models = [
         "meta-llama/llama-3.3-70b-instruct:free",
         "google/gemma-3-27b-it:free",
-        "deepseek/deepseek-chat-v3-0324:free",
         "qwen/qwen3-32b:free",
+        "deepseek/deepseek-chat-v3-0324:free",
         "mistralai/mistral-small-3.1-24b-instruct:free",
-        ":free"
+        "meta-llama/llama-3.3-70b-instruct",
+        "google/gemma-3-27b-it",
+        "qwen/qwen3-32b",
+        "openrouter/auto"
     ]
     for model in or_models:
         try:
@@ -88,10 +95,13 @@ def ai_text(prompt):
             if result:
                 log(f"✅ OpenRouter ({model}): успех")
                 return result
+            else:
+                log(f"⚠️ OpenRouter ({model}): пустой ответ")
         except Exception as e:
             log(f"❌ OpenRouter ({model}) исключение: {e}")
 
     raise RuntimeError("Все ИИ недоступны. Попробуйте позже или проверьте баланс ключей.")
+
 
 def make_image(theme):
     p = ("Atmospheric cinematic illustration for a russian adventure thriller novel, "
