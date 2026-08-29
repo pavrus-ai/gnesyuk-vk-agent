@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import os, json, datetime, requests
 
+# ================= НАСТРОЙКИ =================
 VK_TOKEN = os.environ["VK_TOKEN"]
 GROUP_ID = os.environ["VK_GROUP_ID"]
 GROQ_KEY = os.environ.get("GROQ_KEY", "")
@@ -27,113 +28,105 @@ def _extract(r):
     except (KeyError, IndexError, TypeError):
         return None
 
-def ai_groq(prompt, model="llama-3.1-8b-instant"):
-    if not GROQ_KEY:
-        return None
+# ================= ИИ (ТОЛЬКО РУССКИЙ ЯЗЫК) =================
+def ai_groq(prompt, model):
+    if not GROQ_KEY: return None
+    # Добавляем строгую инструкцию про русский язык
+    full_prompt = f"{prompt}\n\nВАЖНО: Пиши ТОЛЬКО на русском языке. Никаких английских или китайских слов."
     r = requests.post("https://api.groq.com/openai/v1/chat/completions",
         headers={"Authorization": f"Bearer {GROQ_KEY}"},
-        json={"model": model, "temperature": 0.9,
-              "messages": [{"role": "user", "content": prompt}]}, timeout=60).json()
+        json={"model": model, "temperature": 0.8,
+              "messages": [{"role": "user", "content": full_prompt}]}, timeout=60).json()
     if "error" in r:
-        log(f"Groq ({model}) error: {r['error'].get('message', r['error'])}")
+        log(f"Groq ({model}) error: {r['error'].get('message', str(r['error']))}")
         return None
     return _extract(r)
 
-def ai_openrouter(prompt, model="meta-llama/llama-3.1-8b-instruct:free"):
-    if not OR_KEY:
-        return None
+def ai_openrouter(prompt, model):
+    if not OR_KEY: return None
+    full_prompt = f"{prompt}\n\nВАЖНО: Пиши ТОЛЬКО на русском языке. Никаких английских или китайских слов."
     r = requests.post("https://openrouter.ai/api/v1/chat/completions",
-        headers={"Authorization": f"Bearer {OR_KEY}",
-                 "HTTP-Referer": "https://github.com/gnesyuk-vk-agent",
-                 "X-Title": "Gnesyuk VK Agent"},
-        json={"model": model, "temperature": 0.9,
-              "messages": [{"role": "user", "content": prompt}]}, timeout=60).json()
+        headers={"Authorization": f"Bearer {OR_KEY}", "HTTP-Referer": "https://github.com/gnesyuk-vk-agent"},
+        json={"model": model, "temperature": 0.8,
+              "messages": [{"role": "user", "content": full_prompt}]}, timeout=60).json()
     if "error" in r:
-        log(f"OpenRouter ({model}) error: {r['error'].get('message', r['error'])}")
+        log(f"OpenRouter ({model}) error: {r['error'].get('message', str(r['error']))}")
         return None
     return _extract(r)
 
 def ai_text(prompt):
-    log(f"GROQ_KEY: {'есть' if GROQ_KEY else 'НЕТ'} ({len(GROQ_KEY)} символов)")
-    log(f"OPENROUTER_KEY: {'есть' if OR_KEY else 'НЕТ'} ({len(OR_KEY)} символов)")
-
-    # === GROQ: актуальные модели 2026 ===
-    groq_models = [
-        "llama-3.3-70b-versatile",
-        "llama-3.1-8b-instant",
-        "gemma2-9b-it",
-        "mixtral-8x7b-32768",
-        "llama3-70b-8192",
-        "llama3-8b-8192"
+    log(f"GROQ_KEY: {'есть' if GROQ_KEY else 'НЕТ'} | OPENROUTER_KEY: {'есть' if OR_KEY else 'НЕТ'}")
+    
+    # Список моделей для перебора (актуальные бесплатные)
+    models = [
+        ("groq", "llama-3.3-70b-versatile"),
+        ("groq", "llama-3.1-8b-instant"),
+        ("groq", "gemma2-9b-it"),
+        ("openrouter", "meta-llama/llama-3.3-70b-instruct:free"),
+        ("openrouter", "google/gemma-3-27b-it:free"),
+        ("openrouter", "deepseek/deepseek-chat-v3-0324:free"),
+        ("openrouter", ":free")  # Джокер: любая доступная бесплатная модель
     ]
-    for model in groq_models:
+    
+    for provider, model in models:
         try:
-            result = ai_groq(prompt, model)
-            if result:
-                log(f"✅ Groq ({model}): успех")
-                return result
+            if provider == "groq":
+                res = ai_groq(prompt, model)
             else:
-                log(f"⚠️ Groq ({model}): пустой ответ")
+                res = ai_openrouter(prompt, model)
+            
+            if res:
+                log(f"✅ Успех: {provider} ({model})")
+                return res
         except Exception as e:
-            log(f"❌ Groq ({model}) исключение: {e}")
+            log(f"❌ Исключение {provider} ({model}): {e}")
+            
+    raise RuntimeError("Все ИИ недоступны.")
 
-    # === OPENROUTER: модели, которые сам сервис предложил как замену + другие бесплатные ===
-    or_models = [
-        "meta-llama/llama-3.3-70b-instruct:free",
-        "google/gemma-3-27b-it:free",
-        "qwen/qwen3-32b:free",
-        "deepseek/deepseek-chat-v3-0324:free",
-        "mistralai/mistral-small-3.1-24b-instruct:free",
-        "meta-llama/llama-3.3-70b-instruct",
-        "google/gemma-3-27b-it",
-        "qwen/qwen3-32b",
-        "openrouter/auto"
-    ]
-    for model in or_models:
-        try:
-            result = ai_openrouter(prompt, model)
-            if result:
-                log(f"✅ OpenRouter ({model}): успех")
-                return result
-            else:
-                log(f"⚠️ OpenRouter ({model}): пустой ответ")
-        except Exception as e:
-            log(f"❌ OpenRouter ({model}) исключение: {e}")
-
-    raise RuntimeError("Все ИИ недоступны. Попробуйте позже или проверьте баланс ключей.")
-
-
-def make_image(theme):
+# ================= КАРТИНКА (ССЫЛКОЙ) =================
+def make_image_link(theme):
+    # Запрос на английском для генерации, но это не влияет на текст поста
     p = ("Atmospheric cinematic illustration for a russian adventure thriller novel, "
-         + theme + ", dramatic light, film grain, no text, no letters, no watermark")
+         + theme + ", dramatic light, no text, no letters")
     url = ("https://image.pollinations.ai/prompt/" + requests.utils.quote(p)
            + "?width=1200&height=800&nologo=true&seed=" + str(datetime.date.today().toordinal()))
-    r = requests.get(url, timeout=180); r.raise_for_status()
-    open("img.jpg", "wb").write(r.content)
-    log("Картинка сгенерирована"); return "img.jpg"
+    log(f"Картинка готова: {url[:50]}...")
+    return url
 
-def upload_photo(path):
-    s = vk("photos.getWallUploadServer", group_id=GROUP_ID)
-    up = requests.post(s["upload_url"], files={"photo": open(path, "rb")}, timeout=60).json()
-    saved = vk("photos.saveWallPhoto", photo=up["photo"], server=up["server"],
-               hash=up["hash"], group_id=GROUP_ID)
-    return f"photo{saved[0]['owner_id']}_{saved[0]['id']}"
-
+# ================= СБОРКА ПОСТА (350-700 ЗНАКОВ) =================
 def build_post(book, mode, day):
     t, a, u = book["title"], book["about"], book["url"]
+    
+    # Базовый промпт с жесткими ограничениями
+    base_req = (f"Напиши пост для ВК о книге Павла Гнесюка «{t}». "
+                f"Сюжет: {a}. "
+                f"Требования: "
+                f"1. ТОЛЬКО русский язык. "
+                f"2. Длина строго 350-600 символов (без учета ссылки). "
+                f"3. Начни с цепляющего ЗАГОЛОВКА (все буквы заглавные). "
+                f"4. Не используй кавычки-цитаты из книги, пиши своими словами. "
+                f"5. В конце добавь призыв к действию.")
+
     if mode == "fragment" and book.get("fragments"):
         fr = book["fragments"][day % len(book["fragments"])]
-        intro = ai_text(f"Напиши 1-2 интригующих предложения-вступления для поста ВК о романе Павла Гнесюка «{t}». Без кавычек и хештегов.")
-        return f"{intro}\n\n«{fr}»\n\nПродолжение — в романе «{t}» на Литрес:\n{u}\n{TAGS}", a
+        # Для фрагмента просим ввести цитату и написать вступление
+        txt = ai_text(f"{base_req} Используй эту цитату как основу: «{fr}».")
+        return f"{txt}\n\n📖 Читать на Литрес: {u}\n{TAGS}", a
+    
     if mode == "question":
-        txt = ai_text(f"Пост ВК по роману Павла Гнесюка «{t}» (сюжет: {a}): интригующий вопрос читателям + 2-3 предложения размышления + призыв ответить в комментариях. 500-800 знаков, без кавычек.")
-        return f"{txt}\n\nРоман «{t}»: {u}\n{TAGS}", a
-    txt = ai_text(f"Увлекательный пост ВК 600-900 знаков о романе Павла Гнесюка «{t}». Сюжет: {a}. Без спойлеров финала, без кавычек, живой писательский стиль.")
-    return f"{txt}\n\nЧитайте на Литрес: {u}\n{TAGS}", a
+        txt = ai_text(f"{base_req} Закончи пост интригующим вопросом к читателям.")
+        return f"{txt}\n\n📖 Читать на Литрес: {u}\n{TAGS}", a
+        
+    # Режим "about"
+    txt = ai_text(base_req)
+    return f"{txt}\n\n📖 Читать на Литрес: {u}\n{TAGS}", a
 
-def publish(text, att):
-    res = vk("wall.post", owner_id=f"-{GROUP_ID}", from_group=1, message=text, attachments=att)
-    log(f"Пост опубликован, id {res['post_id']}"); return res["post_id"]
+def publish(text, image_url):
+    # Добавляем ссылку на картинку в конец текста — ВК сам подтянет её как фото
+    full_text = f"{text}\n\n{image_url}"
+    res = vk("wall.post", owner_id=f"-{GROUP_ID}", from_group=1, message=full_text, attachments="")
+    log(f"Пост опубликован, id {res['post_id']}")
+    return res["post_id"]
 
 def telegram(msg):
     if TG_TOKEN and TG_CHAT:
@@ -141,31 +134,53 @@ def telegram(msg):
             requests.post(f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage",
                           data={"chat_id": TG_CHAT, "text": msg}, timeout=30)
         except Exception as e:
-            print("Telegram недоступен:", e)
+            print("Telegram error:", e)
 
+# ================= ГЛАВНЫЙ БЛОК =================
 def main():
     books = json.load(open("books.json", encoding="utf-8"))["books"]
     day = datetime.date.today().toordinal()
     book = books[day % len(books)]
     mode = ["about", "fragment", "question"][day % 3]
+    
+    # Если нет фрагментов для книги, переключаемся на "about"
     if mode == "fragment" and not book.get("fragments"):
         mode = "about"
-    log(f"Книга дня: «{book['title']}» ({book['series']}), режим: {mode}")
+        
+    log(f"📚 Книга дня: «{book['title']}» ({book['series']}) | Режим: {mode}")
 
     text, theme = build_post(book, mode, day)
-    att = ""
+    
+    # Генерация картинки
+    img_url = ""
     try:
-        att = upload_photo(make_image(theme))
+        img_url = make_image_link(theme)
     except Exception as e:
-        log(f"Картинка недоступна, пост без фото: {e}")
+        log(f"⚠️ Картинка не создана: {e}")
 
-    pid = publish(text, att)
-    telegram(f"📚 Пост опубликован!\nКнига: {book['title']}\nРежим: {mode}\nid поста: {pid}\n\n" + "\n".join(REPORT))
+    pid = publish(text, img_url)
+    
+    # Отчёт в Telegram
+    report_msg = (f"✅ ПОСТ ОПУБЛИКОВАН!\n"
+                  f"📖 Книга: {book['title']}\n"
+                  f"🎯 Режим: {mode}\n"
+                  f"🆔 ID: {pid}\n"
+                  f"🔗 Ссылка: https://vk.com/wall-{GROUP_ID}_{pid}")
+    telegram(report_msg + "\n\n" + "\n".join(REPORT))
+
+    # === ФИНИШНАЯ ИНСТРУКЦИЯ ===
+    log("=" * 50)
+    log("✅ FINISH: Агент завершил работу успешно!")
+    log(f"📖 Книга: {book['title']}")
+    log(f"🎯 Режим: {mode}")
+    log(f"🆔 Post ID: {pid}")
+    log(f"🔗 https://vk.com/wall-{GROUP_ID}_{pid}")
+    log("=" * 50)
 
 if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        log(f"❌ Ошибка: {e}")
-        telegram("❌ Агент не смог опубликовать пост:\n" + "\n".join(REPORT))
+        log(f"❌ КРИТИЧЕСКАЯ ОШИБКА: {e}")
+        telegram("❌ АГЕНТ УПАЛ:\n" + "\n".join(REPORT))
         raise
