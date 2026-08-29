@@ -54,48 +54,36 @@ def ai_openrouter(prompt, model="meta-llama/llama-3.1-8b-instruct:free"):
     return _extract(r)
 
 def ai_text(prompt):
-    """Пробуем несколько моделей по очереди."""
-    # Диагностика: проверяем наличие ключей
     log(f"GROQ_KEY: {'есть' if GROQ_KEY else 'НЕТ'} ({len(GROQ_KEY)} символов)")
     log(f"OPENROUTER_KEY: {'есть' if OR_KEY else 'НЕТ'} ({len(OR_KEY)} символов)")
     
-    # Попытка 1: Groq llama-3.1-8b-instant
+    # Попытка 1: Groq
     try:
         result = ai_groq(prompt, "llama-3.1-8b-instant")
         if result:
-            log("✅ Groq (llama-3.1-8b-instant): успех")
+            log("✅ Groq: успех")
             return result
     except Exception as e:
-        log(f"❌ Groq (llama-3.1-8b-instant) исключение: {e}")
+        log(f"❌ Groq исключение: {e}")
     
-    # Попытка 2: Groq llama-3.3-70b-versatile
-    try:
-        result = ai_groq(prompt, "llama-3.3-70b-versatile")
-        if result:
-            log("✅ Groq (llama-3.3-70b-versatile): успех")
-            return result
-    except Exception as e:
-        log(f"❌ Groq (llama-3.3-70b-versatile) исключение: {e}")
+    # Попытка 2: OpenRouter - бесплатные модели (актуальные на 2026)
+    free_models = [
+        "google/gemma-2-9b-it:free",
+        "meta-llama/llama-3.2-3b-instruct:free",
+        "microsoft/phi-3-mini-128k-instruct:free",
+        "qwen/qwen-2-7b-instruct:free"
+    ]
     
-    # Попытка 3: OpenRouter llama-3.1-8b-instruct:free
-    try:
-        result = ai_openrouter(prompt, "meta-llama/llama-3.1-8b-instruct:free")
-        if result:
-            log("✅ OpenRouter (llama-3.1-8b-instruct:free): успех")
-            return result
-    except Exception as e:
-        log(f"❌ OpenRouter (llama-3.1-8b-instruct:free) исключение: {e}")
+    for model in free_models:
+        try:
+            result = ai_openrouter(prompt, model)
+            if result:
+                log(f"✅ OpenRouter ({model}): успех")
+                return result
+        except Exception as e:
+            log(f"❌ OpenRouter ({model}) исключение: {e}")
     
-    # Попытка 4: OpenRouter mistral-7b-instruct:free
-    try:
-        result = ai_openrouter(prompt, "mistralai/mistral-7b-instruct:free")
-        if result:
-            log("✅ OpenRouter (mistral-7b-instruct:free): успех")
-            return result
-    except Exception as e:
-        log(f"❌ OpenRouter (mistral-7b-instruct:free) исключение: {e}")
-    
-    raise RuntimeError("Все ИИ недоступны. Проверьте секреты GROQ_KEY и OPENROUTER_KEY.")
+    raise RuntimeError("Все ИИ недоступны. Проверьте ключи и модели.")
 
 def make_image(theme):
     p = ("Atmospheric cinematic illustration for a russian adventure thriller novel, "
