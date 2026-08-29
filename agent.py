@@ -56,25 +56,33 @@ def ai_openrouter(prompt, model="meta-llama/llama-3.1-8b-instruct:free"):
 def ai_text(prompt):
     log(f"GROQ_KEY: {'есть' if GROQ_KEY else 'НЕТ'} ({len(GROQ_KEY)} символов)")
     log(f"OPENROUTER_KEY: {'есть' if OR_KEY else 'НЕТ'} ({len(OR_KEY)} символов)")
-    
-    # Попытка 1: Groq
-    try:
-        result = ai_groq(prompt, "llama-3.1-8b-instant")
-        if result:
-            log("✅ Groq: успех")
-            return result
-    except Exception as e:
-        log(f"❌ Groq исключение: {e}")
-    
-    # Попытка 2: OpenRouter - бесплатные модели (актуальные на 2026)
-    free_models = [
-        "google/gemma-2-9b-it:free",
-        "meta-llama/llama-3.2-3b-instruct:free",
-        "microsoft/phi-3-mini-128k-instruct:free",
-        "qwen/qwen-2-7b-instruct:free"
+
+    # === GROQ: актуальные бесплатные модели ===
+    groq_models = [
+        "llama-3.3-70b-versatile",
+        "llama-3.1-8b-instant",
+        "gemma2-9b-it",
+        "mixtral-8x7b-32768"
     ]
-    
-    for model in free_models:
+    for model in groq_models:
+        try:
+            result = ai_groq(prompt, model)
+            if result:
+                log(f"✅ Groq ({model}): успех")
+                return result
+        except Exception as e:
+            log(f"❌ Groq ({model}) исключение: {e}")
+
+    # === OPENROUTER: актуальные бесплатные модели (авто-выбор) ===
+    or_models = [
+        "meta-llama/llama-3.3-70b-instruct:free",
+        "google/gemma-3-27b-it:free",
+        "deepseek/deepseek-chat-v3-0324:free",
+        "qwen/qwen3-32b:free",
+        "mistralai/mistral-small-3.1-24b-instruct:free",
+        ":free"
+    ]
+    for model in or_models:
         try:
             result = ai_openrouter(prompt, model)
             if result:
@@ -82,8 +90,8 @@ def ai_text(prompt):
                 return result
         except Exception as e:
             log(f"❌ OpenRouter ({model}) исключение: {e}")
-    
-    raise RuntimeError("Все ИИ недоступны. Проверьте ключи и модели.")
+
+    raise RuntimeError("Все ИИ недоступны. Попробуйте позже или проверьте баланс ключей.")
 
 def make_image(theme):
     p = ("Atmospheric cinematic illustration for a russian adventure thriller novel, "
