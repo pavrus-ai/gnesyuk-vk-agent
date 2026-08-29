@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import os, json, datetime, requests
 
-# ================= НАСТРОЙКИ =================
+# ================= НАСТРОЙКИ ИЗ СЕКРЕТОВ =================
 VK_TOKEN = os.environ["VK_TOKEN"]
 GROUP_ID = os.environ["VK_GROUP_ID"]
 GROQ_KEY = os.environ.get("GROQ_KEY", "")
@@ -31,41 +31,52 @@ def _extract(r):
 # ================= ИИ (ТОЛЬКО РУССКИЙ ЯЗЫК) =================
 def ai_groq(prompt, model):
     if not GROQ_KEY: return None
-    # Добавляем строгую инструкцию про русский язык
+    # Строгая инструкция про русский язык
     full_prompt = f"{prompt}\n\nВАЖНО: Пиши ТОЛЬКО на русском языке. Никаких английских или китайских слов."
-    r = requests.post("https://api.groq.com/openai/v1/chat/completions",
-        headers={"Authorization": f"Bearer {GROQ_KEY}"},
-        json={"model": model, "temperature": 0.8,
-              "messages": [{"role": "user", "content": full_prompt}]}, timeout=60).json()
-    if "error" in r:
-        log(f"Groq ({model}) error: {r['error'].get('message', str(r['error']))}")
+    try:
+        r = requests.post("https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {GROQ_KEY}"},
+            json={"model": model, "temperature": 0.8,
+                  "messages": [{"role": "user", "content": full_prompt}]}, timeout=60).json()
+        if "error" in r:
+            log(f"Groq ({model}) error: {r['error'].get('message', str(r['error']))}")
+            return None
+        return _extract(r)
+    except Exception as e:
+        log(f"Groq ({model}) exception: {e}")
         return None
-    return _extract(r)
 
 def ai_openrouter(prompt, model):
     if not OR_KEY: return None
     full_prompt = f"{prompt}\n\nВАЖНО: Пиши ТОЛЬКО на русском языке. Никаких английских или китайских слов."
-    r = requests.post("https://openrouter.ai/api/v1/chat/completions",
-        headers={"Authorization": f"Bearer {OR_KEY}", "HTTP-Referer": "https://github.com/gnesyuk-vk-agent"},
-        json={"model": model, "temperature": 0.8,
-              "messages": [{"role": "user", "content": full_prompt}]}, timeout=60).json()
-    if "error" in r:
-        log(f"OpenRouter ({model}) error: {r['error'].get('message', str(r['error']))}")
+    try:
+        r = requests.post("https://openrouter.ai/api/v1/chat/completions",
+            headers={"Authorization": f"Bearer {OR_KEY}", "HTTP-Referer": "https://github.com/gnesyuk-vk-agent"},
+            json={"model": model, "temperature": 0.8,
+                  "messages": [{"role": "user", "content": full_prompt}]}, timeout=60).json()
+        if "error" in r:
+            log(f"OpenRouter ({model}) error: {r['error'].get('message', str(r['error']))}")
+            return None
+        return _extract(r)
+    except Exception as e:
+        log(f"OpenRouter ({model}) exception: {e}")
         return None
-    return _extract(r)
 
 def ai_text(prompt):
     log(f"GROQ_KEY: {'есть' if GROQ_KEY else 'НЕТ'} | OPENROUTER_KEY: {'есть' if OR_KEY else 'НЕТ'}")
     
-    # Список моделей для перебора (актуальные бесплатные)
+    # Список моделей для перебора (актуальные бесплатные + запасные)
     models = [
         ("groq", "llama-3.3-70b-versatile"),
         ("groq", "llama-3.1-8b-instant"),
         ("groq", "gemma2-9b-it"),
+        ("groq", "mixtral-8x7b-32768"),
         ("openrouter", "meta-llama/llama-3.3-70b-instruct:free"),
         ("openrouter", "google/gemma-3-27b-it:free"),
         ("openrouter", "deepseek/deepseek-chat-v3-0324:free"),
-        ("openrouter", ":free")  # Джокер: любая доступная бесплатная модель
+        ("openrouter", "meta-llama/llama-3.1-8b-instruct:free"),
+        ("openrouter", "mistralai/mistral-7b-instruct:free"),
+        ("openrouter", "auto") # Авто-выбор любой доступной модели
     ]
     
     for provider, model in models:
@@ -81,11 +92,23 @@ def ai_text(prompt):
         except Exception as e:
             log(f"❌ Исключение {provider} ({model}): {e}")
             
-    raise RuntimeError("Все ИИ недоступны.")
+    # === ЗАПАСНОЙ ВАРИАНТ: Если все ИИ упали, публикуем заготовку ===
+    log("⚠️ Все ИИ недоступны. Публикую стандартный пост из базы.")
+    # Пытаемся вытащить суть сюжета из промпта для заготовки
+    try:
+        plot = prompt.split('Сюжет:')[1].split('Требования:')[0].strip()
+    except:
+        plot = "Увлекательный роман с захватывающим сюжетом."
+        
+    return (f"📚 ЧИТАЙТЕ НОВЫЙ РОМАН ПАВЛА ГНЕСЮКА!\n\n"
+            f"{plot}\n\n"
+            f"Увлекательный сюжет, неожиданные повороты и глубокие персонажи ждут вас.\n\n"
+            f"👉 Читать на Литрес: https://www.litres.ru/author/pavel-gnesyuk/\n\n"
+            f"{TAGS}")
 
 # ================= КАРТИНКА (ССЫЛКОЙ) =================
 def make_image_link(theme):
-    # Запрос на английском для генерации, но это не влияет на текст поста
+    # Запрос на английском для генерации картинки (это нормально)
     p = ("Atmospheric cinematic illustration for a russian adventure thriller novel, "
          + theme + ", dramatic light, no text, no letters")
     url = ("https://image.pollinations.ai/prompt/" + requests.utils.quote(p)
@@ -109,8 +132,7 @@ def build_post(book, mode, day):
 
     if mode == "fragment" and book.get("fragments"):
         fr = book["fragments"][day % len(book["fragments"])]
-        # Для фрагмента просим ввести цитату и написать вступление
-        txt = ai_text(f"{base_req} Используй эту цитату как основу: «{fr}».")
+        txt = ai_text(f"{base_req} Используй эту цитату как основу для размышления: «{fr}».")
         return f"{txt}\n\n📖 Читать на Литрес: {u}\n{TAGS}", a
     
     if mode == "question":
