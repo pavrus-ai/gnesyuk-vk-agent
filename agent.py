@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import os, json, datetime, requests
 
-# ================= НАСТРОЙКИ ИЗ СЕКРЕТОВ =================
+# ================= НАСТРОЙКИ =================
 VK_TOKEN = os.environ["VK_TOKEN"]
 GROUP_ID = os.environ["VK_GROUP_ID"]
 GROQ_KEY = os.environ.get("GROQ_KEY", "")
@@ -31,7 +31,6 @@ def _extract(r):
 # ================= ИИ (ТОЛЬКО РУССКИЙ ЯЗЫК) =================
 def ai_groq(prompt, model):
     if not GROQ_KEY: return None
-    # Строгая инструкция про русский язык
     full_prompt = f"{prompt}\n\nВАЖНО: Пиши ТОЛЬКО на русском языке. Никаких английских или китайских слов."
     try:
         r = requests.post("https://api.groq.com/openai/v1/chat/completions",
@@ -65,7 +64,6 @@ def ai_openrouter(prompt, model):
 def ai_text(prompt):
     log(f"GROQ_KEY: {'есть' if GROQ_KEY else 'НЕТ'} | OPENROUTER_KEY: {'есть' if OR_KEY else 'НЕТ'}")
     
-    # Список моделей для перебора (актуальные бесплатные + запасные)
     models = [
         ("groq", "llama-3.3-70b-versatile"),
         ("groq", "llama-3.1-8b-instant"),
@@ -76,7 +74,7 @@ def ai_text(prompt):
         ("openrouter", "deepseek/deepseek-chat-v3-0324:free"),
         ("openrouter", "meta-llama/llama-3.1-8b-instruct:free"),
         ("openrouter", "mistralai/mistral-7b-instruct:free"),
-        ("openrouter", "auto") # Авто-выбор любой доступной модели
+        ("openrouter", "auto")
     ]
     
     for provider, model in models:
@@ -92,9 +90,7 @@ def ai_text(prompt):
         except Exception as e:
             log(f"❌ Исключение {provider} ({model}): {e}")
             
-    # === ЗАПАСНОЙ ВАРИАНТ: Если все ИИ упали, публикуем заготовку ===
     log("⚠️ Все ИИ недоступны. Публикую стандартный пост из базы.")
-    # Пытаемся вытащить суть сюжета из промпта для заготовки
     try:
         plot = prompt.split('Сюжет:')[1].split('Требования:')[0].strip()
     except:
@@ -106,9 +102,8 @@ def ai_text(prompt):
             f"👉 Читать на Литрес: https://www.litres.ru/author/pavel-gnesyuk/\n\n"
             f"{TAGS}")
 
-# ================= КАРТИНКА (ССЫЛКОЙ) =================
+# ================= КАРТИНКА =================
 def make_image_link(theme):
-    # Запрос на английском для генерации картинки (это нормально)
     p = ("Atmospheric cinematic illustration for a russian adventure thriller novel, "
          + theme + ", dramatic light, no text, no letters")
     url = ("https://image.pollinations.ai/prompt/" + requests.utils.quote(p)
@@ -116,11 +111,10 @@ def make_image_link(theme):
     log(f"Картинка готова: {url[:50]}...")
     return url
 
-# ================= СБОРКА ПОСТА (350-700 ЗНАКОВ) =================
+# ================= СБОРКА ПОСТА =================
 def build_post(book, mode, day):
     t, a, u = book["title"], book["about"], book["url"]
     
-    # Базовый промпт с жесткими ограничениями
     base_req = (f"Напиши пост для ВК о книге Павла Гнесюка «{t}». "
                 f"Сюжет: {a}. "
                 f"Требования: "
@@ -139,16 +133,25 @@ def build_post(book, mode, day):
         txt = ai_text(f"{base_req} Закончи пост интригующим вопросом к читателям.")
         return f"{txt}\n\n📖 Читать на Литрес: {u}\n{TAGS}", a
         
-    # Режим "about"
     txt = ai_text(base_req)
     return f"{txt}\n\n📖 Читать на Литрес: {u}\n{TAGS}", a
 
-def publish(text, image_url):
-    # Добавляем ссылку на картинку в конец текста — ВК сам подтянет её как фото
-    full_text = f"{text}\n\n{image_url}"
-    res = vk("wall.post", owner_id=f"-{GROUP_ID}", from_group=1, message=full_text, attachments="")
-    log(f"Пост опубликован, id {res['post_id']}")
-    return res["post_id"]
+def publish_with_image(text, image_url):
+    # 1. Публикуем пост с текстом
+    res = vk("wall.post", owner_id=f"-{GROUP_ID}", from_group=1, message=text, attachments="")
+    post_id = res["post_id"]
+    log(f"Пост опубликован, id {post_id}")
+    
+    # 2. Публикуем комментарий с картинкой
+    try:
+        # ВК подтянет картинку из ссылки в комментарии
+        comment_text = f" Иллюстрация к роману:\n{image_url}"
+        vk("wall.createComment", owner_id=f"-{GROUP_ID}", post_id=post_id, message=comment_text, from_group=1)
+        log("✅ Картинка добавлена в комментарий")
+    except Exception as e:
+        log(f"⚠️ Не удалось добавить комментарий с картинкой: {e}")
+        
+    return post_id
 
 def telegram(msg):
     if TG_TOKEN and TG_CHAT:
@@ -165,7 +168,6 @@ def main():
     book = books[day % len(books)]
     mode = ["about", "fragment", "question"][day % 3]
     
-    # Если нет фрагментов для книги, переключаемся на "about"
     if mode == "fragment" and not book.get("fragments"):
         mode = "about"
         
@@ -173,16 +175,14 @@ def main():
 
     text, theme = build_post(book, mode, day)
     
-    # Генерация картинки
     img_url = ""
     try:
         img_url = make_image_link(theme)
     except Exception as e:
         log(f"⚠️ Картинка не создана: {e}")
 
-    pid = publish(text, img_url)
+    pid = publish_with_image(text, img_url)
     
-    # Отчёт в Telegram
     report_msg = (f"✅ ПОСТ ОПУБЛИКОВАН!\n"
                   f"📖 Книга: {book['title']}\n"
                   f"🎯 Режим: {mode}\n"
@@ -190,7 +190,6 @@ def main():
                   f"🔗 Ссылка: https://vk.com/wall-{GROUP_ID}_{pid}")
     telegram(report_msg + "\n\n" + "\n".join(REPORT))
 
-    # === ФИНИШНАЯ ИНСТРУКЦИЯ ===
     log("=" * 50)
     log("✅ FINISH: Агент завершил работу успешно!")
     log(f"📖 Книга: {book['title']}")
