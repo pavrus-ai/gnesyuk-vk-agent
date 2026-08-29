@@ -22,49 +22,80 @@ def vk(method, **params):
     return r["response"]
 
 def _extract(r):
-    """Безопасное извлечение текста из ответа ИИ."""
     try:
         return r["choices"][0]["message"]["content"].strip()
     except (KeyError, IndexError, TypeError):
         return None
 
-def ai_groq(prompt):
+def ai_groq(prompt, model="llama-3.1-8b-instant"):
+    if not GROQ_KEY:
+        return None
     r = requests.post("https://api.groq.com/openai/v1/chat/completions",
         headers={"Authorization": f"Bearer {GROQ_KEY}"},
-        json={"model": "llama-3.1-8b-instant", "temperature": 0.9,
+        json={"model": model, "temperature": 0.9,
               "messages": [{"role": "user", "content": prompt}]}, timeout=60).json()
+    if "error" in r:
+        log(f"Groq ({model}) error: {r['error'].get('message', r['error'])}")
+        return None
     return _extract(r)
 
-def ai_openrouter(prompt):
+def ai_openrouter(prompt, model="meta-llama/llama-3.1-8b-instruct:free"):
+    if not OR_KEY:
+        return None
     r = requests.post("https://openrouter.ai/api/v1/chat/completions",
-        headers={"Authorization": f"Bearer {OR_KEY}"},
-        json={"model": "meta-llama/llama-3.1-8b-instruct:free", "temperature": 0.9,
+        headers={"Authorization": f"Bearer {OR_KEY}",
+                 "HTTP-Referer": "https://github.com/gnesyuk-vk-agent",
+                 "X-Title": "Gnesyuk VK Agent"},
+        json={"model": model, "temperature": 0.9,
               "messages": [{"role": "user", "content": prompt}]}, timeout=60).json()
+    if "error" in r:
+        log(f"OpenRouter ({model}) error: {r['error'].get('message', r['error'])}")
+        return None
     return _extract(r)
 
 def ai_text(prompt):
-    """ИИ-1 пишет черновик, ИИ-2 шлифует. Если один недоступен — работает второй."""
-    draft = final = None
+    """Пробуем несколько моделей по очереди."""
+    # Диагностика: проверяем наличие ключей
+    log(f"GROQ_KEY: {'есть' if GROQ_KEY else 'НЕТ'} ({len(GROQ_KEY)} символов)")
+    log(f"OPENROUTER_KEY: {'есть' if OR_KEY else 'НЕТ'} ({len(OR_KEY)} символов)")
+    
+    # Попытка 1: Groq llama-3.1-8b-instant
     try:
-        draft = ai_groq(prompt)
-        if draft: log("ИИ-1 (Groq): черновик готов")
-        else: log("ИИ-1 (Groq): пустой ответ")
+        result = ai_groq(prompt, "llama-3.1-8b-instant")
+        if result:
+            log("✅ Groq (llama-3.1-8b-instant): успех")
+            return result
     except Exception as e:
-        log(f"ИИ-1 (Groq) недоступен: {e}")
+        log(f"❌ Groq (llama-3.1-8b-instant) исключение: {e}")
+    
+    # Попытка 2: Groq llama-3.3-70b-versatile
     try:
-        if draft:
-            final = ai_openrouter(f"Улучши текст поста ВК: сделай живым и интригующим, "
-                f"не добавляй фактов, не используй кавычки, до 900 знаков. Текст:\n{draft}")
-            if final: log("ИИ-2 (OpenRouter): текст отшлифован")
-        if not final:
-            final = ai_openrouter(prompt)
-            if final: log("ИИ-2 (OpenRouter): текст написан")
+        result = ai_groq(prompt, "llama-3.3-70b-versatile")
+        if result:
+            log("✅ Groq (llama-3.3-70b-versatile): успех")
+            return result
     except Exception as e:
-        log(f"ИИ-2 (OpenRouter) недоступен: {e}")
-        final = draft
-    if not final:
-        raise RuntimeError("Оба ИИ недоступны")
-    return final
+        log(f"❌ Groq (llama-3.3-70b-versatile) исключение: {e}")
+    
+    # Попытка 3: OpenRouter llama-3.1-8b-instruct:free
+    try:
+        result = ai_openrouter(prompt, "meta-llama/llama-3.1-8b-instruct:free")
+        if result:
+            log("✅ OpenRouter (llama-3.1-8b-instruct:free): успех")
+            return result
+    except Exception as e:
+        log(f"❌ OpenRouter (llama-3.1-8b-instruct:free) исключение: {e}")
+    
+    # Попытка 4: OpenRouter mistral-7b-instruct:free
+    try:
+        result = ai_openrouter(prompt, "mistralai/mistral-7b-instruct:free")
+        if result:
+            log("✅ OpenRouter (mistral-7b-instruct:free): успех")
+            return result
+    except Exception as e:
+        log(f"❌ OpenRouter (mistral-7b-instruct:free) исключение: {e}")
+    
+    raise RuntimeError("Все ИИ недоступны. Проверьте секреты GROQ_KEY и OPENROUTER_KEY.")
 
 def make_image(theme):
     p = ("Atmospheric cinematic illustration for a russian adventure thriller novel, "
