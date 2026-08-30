@@ -1,8 +1,10 @@
+
 # -*- coding: utf-8 -*-
 import os, json, datetime, requests
 
 # ================= НАСТРОЙКИ =================
-VK_TOKEN = os.environ["VK_TOKEN"]
+VK_TOKEN = os.environ["VK_TOKEN"] # Токен группы (для постов)
+VK_USER_TOKEN = os.environ.get("VK_USER_TOKEN", "") # Токен админа (для фото)
 GROUP_ID = os.environ["VK_GROUP_ID"]
 GROQ_KEY = os.environ.get("GROQ_KEY", "")
 OR_KEY = os.environ.get("OPENROUTER_KEY", "")
@@ -15,8 +17,8 @@ REPORT = []
 def log(msg):
     print(msg); REPORT.append(msg)
 
-def vk(method, **params):
-    params.update(access_token=VK_TOKEN, v="5.131")
+def vk(method, token, **params):
+    params.update(access_token=token, v="5.131")
     r = requests.post(VK_API + method, data=params, timeout=30).json()
     if "error" in r:
         err = r['error']
@@ -39,12 +41,9 @@ def ai_groq(prompt, model):
             headers={"Authorization": f"Bearer {GROQ_KEY}"},
             json={"model": model, "temperature": 0.8,
                   "messages": [{"role": "user", "content": full_prompt}]}, timeout=60).json()
-        if "error" in r:
-            log(f"Groq ({model}) error: {r['error'].get('message', str(r['error']))}")
-            return None
+        if "error" in r: return None
         return _extract(r)
     except Exception as e:
-        log(f"Groq ({model}) exception: {e}")
         return None
 
 def ai_openrouter(prompt, model):
@@ -55,62 +54,46 @@ def ai_openrouter(prompt, model):
             headers={"Authorization": f"Bearer {OR_KEY}", "HTTP-Referer": "https://github.com/gnesyuk-vk-agent"},
             json={"model": model, "temperature": 0.8,
                   "messages": [{"role": "user", "content": full_prompt}]}, timeout=60).json()
-        if "error" in r:
-            log(f"OpenRouter ({model}) error: {r['error'].get('message', str(r['error']))}")
-            return None
+        if "error" in r: return None
         return _extract(r)
     except Exception as e:
-        log(f"OpenRouter ({model}) exception: {e}")
         return None
 
 def ai_text(prompt):
     log(f"GROQ_KEY: {'есть' if GROQ_KEY else 'НЕТ'} | OPENROUTER_KEY: {'есть' if OR_KEY else 'НЕТ'}")
     
     models = [
-        ("groq", "llama-3.3-70b-versatile"),
-        ("groq", "llama-3.1-8b-instant"),
-        ("groq", "gemma2-9b-it"),
-        ("groq", "mixtral-8x7b-32768"),
+        ("groq", "llama-3.3-70b-versatile"), ("groq", "llama-3.1-8b-instant"),
         ("openrouter", "meta-llama/llama-3.3-70b-instruct:free"),
         ("openrouter", "google/gemma-3-27b-it:free"),
         ("openrouter", "deepseek/deepseek-chat-v3-0324:free"),
-        ("openrouter", "meta-llama/llama-3.1-8b-instruct:free"),
-        ("openrouter", "mistralai/mistral-7b-instruct:free"),
         ("openrouter", "auto")
     ]
     
     for provider, model in models:
         try:
-            if provider == "groq":
-                res = ai_groq(prompt, model)
-            else:
-                res = ai_openrouter(prompt, model)
-            
+            res = ai_groq(prompt, model) if provider == "groq" else ai_openrouter(prompt, model)
             if res:
                 log(f"✅ Успех: {provider} ({model})")
                 return res
         except Exception as e:
-            log(f"❌ Исключение {provider} ({model}): {e}")
+            pass
             
     log("⚠️ Все ИИ недоступны. Публикую стандартный пост из базы.")
-    try:
-        plot = prompt.split('Сюжет:')[1].split('Требования:')[0].strip()
-    except:
-        plot = "Увлекательный роман с захватывающим сюжетом."
+    try: plot = prompt.split('Сюжет:')[1].split('Требования:')[0].strip()
+    except: plot = "Увлекательный роман с захватывающим сюжетом."
         
-    return (f"📚 ЧИТАЙТЕ НОВЫЙ РОМАН ПАВЛА ГНЕСЮКА!\n\n"
-            f"{plot}\n\n"
+    return (f"📚 ЧИТАЙТЕ НОВЫЙ РОМАН ПАВЛА ГНЕСЮКА!\n\n{plot}\n\n"
             f"Увлекательный сюжет, неожиданные повороты и глубокие персонажи ждут вас.\n\n"
-            f"👉 Читать на Литрес: https://www.litres.ru/author/pavel-gnesyuk/\n\n"
-            f"{TAGS}")
+            f"👉 Читать на Литрес: https://www.litres.ru/author/pavel-gnesyuk/\n\n{TAGS}")
 
-# ================= КАРТИНКА (ЗАГРУЗКА В ВК) =================
+# ================= КАРТИНКА (ЗАГРУЗКА В ВК ЧЕРЕЗ ТОКЕН АДМИНА) =================
 def make_image_file(theme):
     p = ("Atmospheric cinematic illustration for a russian adventure thriller novel, "
          + theme + ", dramatic light, no text, no letters")
     url = ("https://image.pollinations.ai/prompt/" + requests.utils.quote(p)
            + "?width=1200&height=800&nologo=true&seed=" + str(datetime.date.today().toordinal()))
-    log(f"Скачивание картинки: {url[:50]}...")
+    log(f"Скачивание картинки...")
     r = requests.get(url, timeout=180)
     r.raise_for_status()
     path = "img.jpg"
@@ -118,10 +101,14 @@ def make_image_file(theme):
     return path
 
 def upload_photo_to_vk(path):
-    """Алгоритм загрузки фото через токен группы"""
+    """Загрузка фото через пользовательский токен администратора"""
+    if not VK_USER_TOKEN:
+        log("⚠️ Нет VK_USER_TOKEN, пропускаем загрузку фото")
+        return None
+        
     try:
-        # 1. Получаем сервер для загрузки на стену
-        server_data = vk("photos.getWallUploadServer", group_id=GROUP_ID)
+        # 1. Получаем сервер (используем токен админа!)
+        server_data = vk("photos.getWallUploadServer", VK_USER_TOKEN, group_id=GROUP_ID)
         upload_url = server_data["upload_url"]
         
         # 2. Загружаем файл
@@ -132,8 +119,8 @@ def upload_photo_to_vk(path):
              log(f"❌ Ошибка загрузки файла на сервер ВК: {upload_resp}")
              return None
 
-        # 3. Сохраняем фото как фото для стены
-        saved_photos = vk("photos.saveWallPhoto", 
+        # 3. Сохраняем фото (используем токен админа!)
+        saved_photos = vk("photos.saveWallPhoto", VK_USER_TOKEN, 
                           photo=upload_resp["photo"], 
                           server=upload_resp["server"], 
                           hash=upload_resp["hash"], 
@@ -141,7 +128,7 @@ def upload_photo_to_vk(path):
         
         photo_obj = saved_photos[0]
         attachment = f"photo{photo_obj['owner_id']}_{photo_obj['id']}"
-        log(f"✅ Фото загружено в ВК: {attachment}")
+        log(f"✅ Фото успешно загружено в ВК: {attachment}")
         return attachment
         
     except Exception as e:
@@ -152,18 +139,14 @@ def upload_photo_to_vk(path):
 def build_post(book, mode, day):
     t, a, u = book["title"], book["about"], book["url"]
     
-    base_req = (f"Напиши пост для ВК о книге Павла Гнесюка «{t}». "
-                f"Сюжет: {a}. "
-                f"Требования: "
-                f"1. ТОЛЬКО русский язык. "
-                f"2. Длина строго 350-600 символов (без учета ссылки). "
+    base_req = (f"Напиши пост для ВК о книге Павла Гнесюка «{t}». Сюжет: {a}. "
+                f"Требования: 1. ТОЛЬКО русский язык. 2. Длина строго 350-600 символов. "
                 f"3. Начни с цепляющего ЗАГОЛОВКА (все буквы заглавные). "
-                f"4. Не используй кавычки-цитаты из книги, пиши своими словами. "
-                f"5. В конце добавь призыв к действию.")
+                f"4. Не используй кавычки-цитаты, пиши своими словами. 5. В конце призыв к действию.")
 
     if mode == "fragment" and book.get("fragments"):
         fr = book["fragments"][day % len(book["fragments"])]
-        txt = ai_text(f"{base_req} Используй эту цитату как основу для размышления: «{fr}».")
+        txt = ai_text(f"{base_req} Используй эту цитату как основу: «{fr}».")
         return f"{txt}\n\n📖 Читать на Литрес: {u}\n{TAGS}", a
     
     if mode == "question":
@@ -174,12 +157,12 @@ def build_post(book, mode, day):
     return f"{txt}\n\n📖 Читать на Литрес: {u}\n{TAGS}", a
 
 def publish(text, attachment):
-    # Если есть вложение (фото), прикрепляем его. Если нет - пост только с текстом.
+    # Пост публикуем от имени группы (через токен группы)
     params = {"owner_id": f"-{GROUP_ID}", "from_group": 1, "message": text}
     if attachment:
         params["attachments"] = attachment
     
-    res = vk("wall.post", **params)
+    res = vk("wall.post", VK_TOKEN, **params)
     post_id = res['post_id']
     log(f"Пост опубликован, id {post_id}")
     return post_id
@@ -206,7 +189,7 @@ def main():
 
     text, theme = build_post(book, mode, day)
     
-    # Попытка загрузить фото
+    # Попытка загрузить фото через токен админа
     attachment = ""
     try:
         img_path = make_image_file(theme)
@@ -214,35 +197,23 @@ def main():
     except Exception as e:
         log(f"⚠️ Ошибка при работе с картинкой: {e}")
     
-    # Если фото не загрузилось, добавляем ссылку в текст (запасной вариант)
+    # Если фото не загрузилось, добавляем ссылку в текст
     if not attachment:
         try:
-             p = ("Atmospheric cinematic illustration for a russian adventure thriller novel, "
-                 + theme + ", dramatic light, no text, no letters")
-             url = ("https://image.pollinations.ai/prompt/" + requests.utils.quote(p)
-                   + "?width=1200&height=800&nologo=true&seed=" + str(datetime.date.today().toordinal()))
+             p = ("Atmospheric cinematic illustration for a russian adventure thriller novel, " + theme + ", dramatic light, no text")
+             url = ("https://image.pollinations.ai/prompt/" + requests.utils.quote(p) + "?width=1200&height=800&nologo=true")
              text += f"\n\n🖼 Иллюстрация: {url}"
              log("Добавлена ссылка на картинку в текст")
-        except:
-             pass
+        except: pass
 
     pid = publish(text, attachment)
-    
-    # Формируем правильную ссылку на пост
     post_url = f"https://vk.com/wall-{GROUP_ID}_{pid}"
     
-    report_msg = (f"✅ ПОСТ ОПУБЛИКОВАН!\n"
-                  f"📖 Книга: {book['title']}\n"
-                  f"🎯 Режим: {mode}\n"
-                  f"🆔 ID: {pid}\n"
-                  f"🔗 Ссылка: {post_url}")
+    report_msg = (f"✅ ПОСТ ОПУБЛИКОВАН!\n📖 Книга: {book['title']}\n🎯 Режим: {mode}\n🆔 ID: {pid}\n🔗 Ссылка: {post_url}")
     telegram(report_msg + "\n\n" + "\n".join(REPORT))
 
     log("=" * 50)
     log("✅ FINISH: Агент завершил работу успешно!")
-    log(f"📖 Книга: {book['title']}")
-    log(f"🎯 Режим: {mode}")
-    log(f"🆔 Post ID: {pid}")
     log(f"🔗 {post_url}")
     log("=" * 50)
 
