@@ -1,16 +1,16 @@
-
 # -*- coding: utf-8 -*-
 import os, json, datetime, requests
 
 # ================= НАСТРОЙКИ =================
-VK_TOKEN = os.environ["VK_TOKEN"] # Токен группы (для постов)
-VK_USER_TOKEN = os.environ.get("VK_USER_TOKEN", "") # Токен админа (для фото)
-GROUP_ID = os.environ["VK_GROUP_ID"]
+VK_TOKEN = os.environ["VK_TOKEN"] # Токен группы (теперь используется для ВСЕГО)
+GROUP_ID = "191540984" # ID вашей группы из ссылки
+ALBUM_ID = 310208146   # ID вашего созданного альбома из ссылки
+
 GROQ_KEY = os.environ.get("GROQ_KEY", "")
 OR_KEY = os.environ.get("OPENROUTER_KEY", "")
 TG_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
 TG_CHAT = os.environ.get("TELEGRAM_CHAT_ID", "")
-VK_API = "https://api.vk.ru/method/" # <-- ОБНОВЛЕНО НА VK.RU
+VK_API = "https://vk.ru"
 TAGS = "#ПавелГнесюк #ТарскиеЛегенды #Хранители #книги #романы"
 REPORT = []
 
@@ -37,7 +37,7 @@ def ai_groq(prompt, model):
     if not GROQ_KEY: return None
     full_prompt = f"{prompt}\n\nВАЖНО: Пиши ТОЛЬКО на русском языке. Никаких английских или китайских слов."
     try:
-        r = requests.post("https://api.groq.com/openai/v1/chat/completions",
+        r = requests.post("https://groq.com",
             headers={"Authorization": f"Bearer {GROQ_KEY}"},
             json={"model": model, "temperature": 0.8,
                   "messages": [{"role": "user", "content": full_prompt}]}, timeout=60).json()
@@ -50,8 +50,8 @@ def ai_openrouter(prompt, model):
     if not OR_KEY: return None
     full_prompt = f"{prompt}\n\nВАЖНО: Пиши ТОЛЬКО на русском языке. Никаких английских или китайских слов."
     try:
-        r = requests.post("https://openrouter.ai/api/v1/chat/completions",
-            headers={"Authorization": f"Bearer {OR_KEY}", "HTTP-Referer": "https://github.com/gnesyuk-vk-agent"},
+        r = requests.post("https://openrouter.ai",
+            headers={"Authorization": f"Bearer {OR_KEY}", "HTTP-Referer": "https://github.com"},
             json={"model": model, "temperature": 0.8,
                   "messages": [{"role": "user", "content": full_prompt}]}, timeout=60).json()
         if "error" in r: return None
@@ -85,13 +85,13 @@ def ai_text(prompt):
         
     return (f"📚 ЧИТАЙТЕ НОВЫЙ РОМАН ПАВЛА ГНЕСЮКА!\n\n{plot}\n\n"
             f"Увлекательный сюжет, неожиданные повороты и глубокие персонажи ждут вас.\n\n"
-            f"👉 Читать на Литрес: https://www.litres.ru/author/pavel-gnesyuk/\n\n{TAGS}")
+            f"👉 Читать на Литрес: https://litres.ru\n\n{TAGS}")
 
-# ================= КАРТИНКА (ЗАГРУЗКА В ВК ЧЕРЕЗ ТОКЕН АДМИНА) =================
+# ================= КАРТИНКА =================
 def make_image_file(theme):
     p = ("Atmospheric cinematic illustration for a russian adventure thriller novel, "
          + theme + ", dramatic light, no text, no letters")
-    url = ("https://image.pollinations.ai/prompt/" + requests.utils.quote(p)
+    url = ("https://pollinations.ai" + requests.utils.quote(p)
            + "?width=1200&height=800&nologo=true&seed=" + str(datetime.date.today().toordinal()))
     log(f"Скачивание картинки...")
     r = requests.get(url, timeout=180)
@@ -101,38 +101,42 @@ def make_image_file(theme):
     return path
 
 def upload_photo_to_vk(path):
-    """Загрузка фото через пользовательский токен администратора"""
-    if not VK_USER_TOKEN:
-        log("⚠️ Нет VK_USER_TOKEN, пропускаем загрузку фото")
-        return None
-        
+    """Загрузка фото полностью через токен ГРУППЫ (без привязки к IP-адресу)"""
     try:
-        # 1. Получаем сервер (используем токен админа!)
-        server_data = vk("photos.getWallUploadServer", VK_USER_TOKEN, group_id=GROUP_ID)
+        # 1. Получаем сервер для загрузки в АЛЬБОМ группы
+        server_data = vk("photos.getUploadServer", VK_TOKEN, 
+                         group_id=int(GROUP_ID), 
+                         album_id=ALBUM_ID)
         upload_url = server_data["upload_url"]
         
-        # 2. Загружаем файл
+        # 2. Отправляем файл multipart/form-data. Для этого метода имя поля должно быть 'file1'
         with open(path, "rb") as f:
-            upload_resp = requests.post(upload_url, files={"photo": f}, timeout=60).json()
+            upload_resp = requests.post(upload_url, files={"file1": f}, timeout=60).json()
         
-        if "error" in upload_resp:
-             log(f"❌ Ошибка загрузки файла на сервер ВК: {upload_resp}")
+        if "error" in upload_resp or not upload_resp.get("photos_list"):
+             log(f"❌ Ошибка загрузки файла в альбом ВК: {upload_resp}")
              return None
 
-        # 3. Сохраняем фото (используем токен админа!)
-        saved_photos = vk("photos.saveWallPhoto", VK_USER_TOKEN, 
-                          photo=upload_resp["photo"], 
+        # 3. Сохраняем фото в альбом
+        saved_photos = vk("photos.save", VK_TOKEN, 
+                          photos_list=upload_resp["photos_list"], 
                           server=upload_resp["server"], 
                           hash=upload_resp["hash"], 
-                          group_id=GROUP_ID)
+                          group_id=int(GROUP_ID),
+                          album_id=ALBUM_ID)
         
+        if not saved_photos:
+            log("❌ ВК вернул пустой ответ при сохранении фото.")
+            return None
+            
+        #photos.save возвращает массив объектов фотографий
         photo_obj = saved_photos[0]
         attachment = f"photo{photo_obj['owner_id']}_{photo_obj['id']}"
-        log(f"✅ Фото успешно загружено в ВК: {attachment}")
+        log(f"✅ Фото успешно загружено в альбом группы: {attachment}")
         return attachment
         
     except Exception as e:
-        log(f"⚠️ Не удалось загрузить фото в ВК: {e}")
+        log(f"⚠️ Не удалось загрузить фото через токен группы: {e}")
         return None
 
 # ================= СБОРКА ПОСТА =================
@@ -157,7 +161,7 @@ def build_post(book, mode, day):
     return f"{txt}\n\n📖 Читать на Литрес: {u}\n{TAGS}", a
 
 def publish(text, attachment):
-    # Пост публикуем от имени группы (через токен группы)
+    # Пост публикуем от имени группы
     params = {"owner_id": f"-{GROUP_ID}", "from_group": 1, "message": text}
     if attachment:
         params["attachments"] = attachment
@@ -170,7 +174,7 @@ def publish(text, attachment):
 def telegram(msg):
     if TG_TOKEN and TG_CHAT:
         try:
-            requests.post(f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage",
+            requests.post(f"https://telegram.org{TG_TOKEN}/sendMessage",
                           data={"chat_id": TG_CHAT, "text": msg}, timeout=30)
         except Exception as e:
             print("Telegram error:", e)
@@ -189,7 +193,7 @@ def main():
 
     text, theme = build_post(book, mode, day)
     
-    # Попытка загрузить фото через токен админа
+    # Попытка загрузить фото через токен группы в альбом
     attachment = ""
     try:
         img_path = make_image_file(theme)
@@ -201,15 +205,14 @@ def main():
     if not attachment:
         try:
              p = ("Atmospheric cinematic illustration for a russian adventure thriller novel, " + theme + ", dramatic light, no text")
-             url = ("https://image.pollinations.ai/prompt/" + requests.utils.quote(p) + "?width=1200&height=800&nologo=true")
+             url = ("https://pollinations.ai" + requests.utils.quote(p) + "?width=1200&height=800&nologo=true")
              text += f"\n\n🖼 Иллюстрация: {url}"
              log("Добавлена ссылка на картинку в текст")
         except: pass
 
     pid = publish(text, attachment)
     
-    # <-- ОБНОВЛЕНО НА VK.RU
-    post_url = f"https://vk.ru/wall-{GROUP_ID}_{pid}"
+    post_url = f"https://vk.ru{GROUP_ID}_{pid}"
     
     report_msg = (f"✅ ПОСТ ОПУБЛИКОВАН!\n📖 Книга: {book['title']}\n🎯 Режим: {mode}\n🆔 ID: {pid}\n🔗 Ссылка: {post_url}")
     telegram(report_msg + "\n\n" + "\n".join(REPORT))
