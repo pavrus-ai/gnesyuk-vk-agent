@@ -1,3 +1,4 @@
+
 # -*- coding: utf-8 -*-
 import os, json, datetime, requests
 
@@ -249,4 +250,3 @@ if __name__ == "__main__":
         log(f"❌ КРИТИЧЕСКАЯ ОШИБКА: {e}")
         telegram("❌ АГЕНТ УПАЛ:\n" + "\n".join(REPORT))
         raise
-
