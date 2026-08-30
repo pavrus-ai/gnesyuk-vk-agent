@@ -1,4 +1,3 @@
-
 # -*- coding: utf-8 -*-
 import os, json, datetime, requests
 
@@ -119,7 +118,7 @@ def make_image_file(theme):
     return path
 
 def upload_photo_to_vk(path):
-    """Алгоритм загрузки фото через токен группы (по инструкции Алисы)"""
+    """Алгоритм загрузки фото через токен группы"""
     try:
         # 1. Получаем сервер для загрузки на стену
         server_data = vk("photos.getWallUploadServer", group_id=GROUP_ID)
@@ -181,8 +180,9 @@ def publish(text, attachment):
         params["attachments"] = attachment
     
     res = vk("wall.post", **params)
-    log(f"Пост опубликован, id {res['post_id']}")
-    return res["post_id"]
+    post_id = res['post_id']
+    log(f"Пост опубликован, id {post_id}")
+    return post_id
 
 def telegram(msg):
     if TG_TOKEN and TG_CHAT:
@@ -228,11 +228,14 @@ def main():
 
     pid = publish(text, attachment)
     
+    # Формируем правильную ссылку на пост
+    post_url = f"https://vk.com/wall-{GROUP_ID}_{pid}"
+    
     report_msg = (f"✅ ПОСТ ОПУБЛИКОВАН!\n"
                   f"📖 Книга: {book['title']}\n"
                   f"🎯 Режим: {mode}\n"
                   f"🆔 ID: {pid}\n"
-                  f"🔗 Ссылка: https://vk.com/wall-{GROUP_ID}_{pid}")
+                  f"🔗 Ссылка: {post_url}")
     telegram(report_msg + "\n\n" + "\n".join(REPORT))
 
     log("=" * 50)
@@ -240,7 +243,7 @@ def main():
     log(f"📖 Книга: {book['title']}")
     log(f"🎯 Режим: {mode}")
     log(f"🆔 Post ID: {pid}")
-    log(f"🔗 https://vk.com/wall-{GROUP_ID}_{pid}")
+    log(f"🔗 {post_url}")
     log("=" * 50)
 
 if __name__ == "__main__":
@@ -250,3 +253,4 @@ if __name__ == "__main__":
         log(f"❌ КРИТИЧЕСКАЯ ОШИБКА: {e}")
         telegram("❌ АГЕНТ УПАЛ:\n" + "\n".join(REPORT))
         raise
+
