@@ -2,9 +2,9 @@
 import os, json, datetime, requests
 
 # ================= НАСТРОЙКИ =================
-VK_TOKEN = os.environ["VK_TOKEN"] # Токен группы (теперь используется для ВСЕГО)
-GROUP_ID = "191540984" # ID вашей группы из ссылки
-ALBUM_ID = 310208146   # ID вашего созданного альбома из ссылки
+VK_TOKEN = os.environ["VK_TOKEN"]       # Токен вашей группы
+GROUP_ID = "191540984"                  # ID вашей группы из ссылки
+ALBUM_ID = 310208146                     # ID вашего созданного альбома
 
 GROQ_KEY = os.environ.get("GROQ_KEY", "")
 OR_KEY = os.environ.get("OPENROUTER_KEY", "")
@@ -19,7 +19,9 @@ def log(msg):
 
 def vk(method, token, **params):
     params.update(access_token=token, v="5.131")
-    r = requests.post(VK_API + method, data=params, timeout=30).json()
+    # Гарантированно правильное склеивание базового URL API и метода
+    url = f"{VK_API.rstrip('/')}/{method.lstrip('/')}"
+    r = requests.post(url, data=params, timeout=30).json()
     if "error" in r:
         err = r['error']
         log(f"❌ VK API Error [{method}]: code={err.get('error_code')}, msg={err.get('error_msg')}")
@@ -80,8 +82,10 @@ def ai_text(prompt):
             pass
             
     log("⚠️ Все ИИ недоступны. Публикую стандартный пост из базы.")
-    try: plot = prompt.split('Сюжет:')[1].split('Требования:')[0].strip()
-    except: plot = "Увлекательный роман с захватывающим сюжетом."
+    try: 
+        plot = prompt.split('Сюжет:')[1].split('Требования:')[0].strip()
+    except: 
+        plot = "Увлекательный роман с захватывающим сюжетом."
         
     return (f"📚 ЧИТАЙТЕ НОВЫЙ РОМАН ПАВЛА ГНЕСЮКА!\n\n{plot}\n\n"
             f"Увлекательный сюжет, неожиданные повороты и глубокие персонажи ждут вас.\n\n"
@@ -89,27 +93,31 @@ def ai_text(prompt):
 
 # ================= КАРТИНКА =================
 def make_image_file(theme):
+    # Очищаем тему от спецсимволов и обрезаем строку для стабильности URL генератора
+    clean_theme = "".join(c for c in theme if c.isalnum() or c.isspace())[:120].strip()
+    
     p = ("Atmospheric cinematic illustration for a russian adventure thriller novel, "
-         + theme + ", dramatic light, no text, no letters")
+         + clean_theme + ", dramatic light, no text, no letters")
     url = ("https://pollinations.ai" + requests.utils.quote(p)
            + "?width=1200&height=800&nologo=true&seed=" + str(datetime.date.today().toordinal()))
     log(f"Скачивание картинки...")
     r = requests.get(url, timeout=180)
     r.raise_for_status()
     path = "img.jpg"
-    open(path, "wb").write(r.content)
+    with open(path, "wb") as f:
+        f.write(r.content)
     return path
 
 def upload_photo_to_vk(path):
     """Загрузка фото полностью через токен ГРУППЫ (без привязки к IP-адресу)"""
     try:
-        # 1. Получаем сервер для загрузки в АЛЬБОМ группы
+        # 1. Получаем сервер для загрузки в конкретный альбом группы
         server_data = vk("photos.getUploadServer", VK_TOKEN, 
                          group_id=int(GROUP_ID), 
                          album_id=ALBUM_ID)
         upload_url = server_data["upload_url"]
         
-        # 2. Отправляем файл multipart/form-data. Для этого метода имя поля должно быть 'file1'
+        # 2. Отправляем файл. Для метода загрузки в альбом поле обязательно называется 'file1'
         with open(path, "rb") as f:
             upload_resp = requests.post(upload_url, files={"file1": f}, timeout=60).json()
         
@@ -117,7 +125,7 @@ def upload_photo_to_vk(path):
              log(f"❌ Ошибка загрузки файла в альбом ВК: {upload_resp}")
              return None
 
-        # 3. Сохраняем фото в альбом
+        # 3. Сохраняем фото в альбом сообщества
         saved_photos = vk("photos.save", VK_TOKEN, 
                           photos_list=upload_resp["photos_list"], 
                           server=upload_resp["server"], 
@@ -126,10 +134,10 @@ def upload_photo_to_vk(path):
                           album_id=ALBUM_ID)
         
         if not saved_photos:
-            log("❌ ВК вернул пустой ответ при сохранении фото.")
+            log("❌ ВК вернул пустой массив при сохранении фотографии")
             return None
             
-        #photos.save возвращает массив объектов фотографий
+        # Берем первый объект из массива сохраненных фото
         photo_obj = saved_photos[0]
         attachment = f"photo{photo_obj['owner_id']}_{photo_obj['id']}"
         log(f"✅ Фото успешно загружено в альбом группы: {attachment}")
@@ -161,7 +169,7 @@ def build_post(book, mode, day):
     return f"{txt}\n\n📖 Читать на Литрес: {u}\n{TAGS}", a
 
 def publish(text, attachment):
-    # Пост публикуем от имени группы
+    # Публикация записи на стене от имени группы
     params = {"owner_id": f"-{GROUP_ID}", "from_group": 1, "message": text}
     if attachment:
         params["attachments"] = attachment
@@ -193,7 +201,7 @@ def main():
 
     text, theme = build_post(book, mode, day)
     
-    # Попытка загрузить фото через токен группы в альбом
+    # Попытка загрузить сгенерированное фото
     attachment = ""
     try:
         img_path = make_image_file(theme)
@@ -201,10 +209,11 @@ def main():
     except Exception as e:
         log(f"⚠️ Ошибка при работе с картинкой: {e}")
     
-    # Если фото не загрузилось, добавляем ссылку в текст
+    # Резервный вариант: если фото не смогло загрузиться, крепим прямую ссылку на Pollinations в текст
     if not attachment:
         try:
-             p = ("Atmospheric cinematic illustration for a russian adventure thriller novel, " + theme + ", dramatic light, no text")
+             clean_theme = "".join(c for c in theme if c.isalnum() or c.isspace())[:120].strip()
+             p = ("Atmospheric cinematic illustration for a russian adventure thriller novel, " + clean_theme + ", dramatic light, no text")
              url = ("https://pollinations.ai" + requests.utils.quote(p) + "?width=1200&height=800&nologo=true")
              text += f"\n\n🖼 Иллюстрация: {url}"
              log("Добавлена ссылка на картинку в текст")
