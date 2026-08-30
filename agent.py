@@ -5,12 +5,12 @@ import os, json, datetime, requests
 VK_TOKEN = os.environ["VK_TOKEN"]
 GROUP_ID = os.environ["VK_GROUP_ID"]
 GROQ_KEY = os.environ.get("GROQ_KEY", "")
-OR_KEY   = os.environ.get("OPENROUTER_KEY", "")
+OR_KEY = os.environ.get("OPENROUTER_KEY", "")
 TG_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
-TG_CHAT  = os.environ.get("TELEGRAM_CHAT_ID", "")
-VK_API   = "https://api.vk.com/method/"
-TAGS     = "#ПавелГнесюк #ТарскиеЛегенды #Хранители #книги #романы"
-REPORT   = []
+TG_CHAT = os.environ.get("TELEGRAM_CHAT_ID", "")
+VK_API = "https://api.vk.com/method/"
+TAGS = "#ПавелГнесюк #ТарскиеЛегенды #Хранители #книги #романы"
+REPORT = []
 
 def log(msg):
     print(msg); REPORT.append(msg)
@@ -19,7 +19,10 @@ def vk(method, **params):
     params.update(access_token=VK_TOKEN, v="5.131")
     r = requests.post(VK_API + method, data=params, timeout=30).json()
     if "error" in r:
-        raise RuntimeError(f"VK error {method}: {r['error']}")
+        # Детальный вывод ошибки ВК
+        err = r['error']
+        log(f"❌ VK API Error [{method}]: code={err.get('error_code')}, msg={err.get('error_msg')}")
+        raise RuntimeError(f"VK error {method}: {err}")
     return r["response"]
 
 def _extract(r):
@@ -102,14 +105,49 @@ def ai_text(prompt):
             f"👉 Читать на Литрес: https://www.litres.ru/author/pavel-gnesyuk/\n\n"
             f"{TAGS}")
 
-# ================= КАРТИНКА =================
-def make_image_link(theme):
+# ================= КАРТИНКА (ЗАГРУЗКА В ВК) =================
+def make_image_file(theme):
     p = ("Atmospheric cinematic illustration for a russian adventure thriller novel, "
          + theme + ", dramatic light, no text, no letters")
     url = ("https://image.pollinations.ai/prompt/" + requests.utils.quote(p)
            + "?width=1200&height=800&nologo=true&seed=" + str(datetime.date.today().toordinal()))
-    log(f"Картинка готова: {url[:50]}...")
-    return url
+    log(f"Скачивание картинки: {url[:50]}...")
+    r = requests.get(url, timeout=180)
+    r.raise_for_status()
+    path = "img.jpg"
+    open(path, "wb").write(r.content)
+    return path
+
+def upload_photo_to_vk(path):
+    """Алгоритм загрузки фото через токен группы"""
+    try:
+        # 1. Получаем сервер
+        server_data = vk("photos.getWallUploadServer", group_id=GROUP_ID)
+        upload_url = server_data["upload_url"]
+        
+        # 2. Загружаем файл
+        with open(path, "rb") as f:
+            upload_resp = requests.post(upload_url, files={"photo": f}, timeout=60).json()
+        
+        if "error" in upload_resp:
+             log(f"❌ Ошибка загрузки файла на сервер ВК: {upload_resp}")
+             return None
+
+        # 3. Сохраняем фото
+        saved_photos = vk("photos.saveWallPhoto", 
+                          photo=upload_resp["photo"], 
+                          server=upload_resp["server"], 
+                          hash=upload_resp["hash"], 
+                          group_id=GROUP_ID)
+        
+        photo_obj = saved_photos[0]
+        attachment = f"photo{photo_obj['owner_id']}_{photo_obj['id']}"
+        log(f"✅ Фото загружено в ВК: {attachment}")
+        return attachment
+        
+    except Exception as e:
+        log(f"⚠️ Не удалось загрузить фото в ВК: {e}")
+        return None
 
 # ================= СБОРКА ПОСТА =================
 def build_post(book, mode, day):
@@ -136,22 +174,15 @@ def build_post(book, mode, day):
     txt = ai_text(base_req)
     return f"{txt}\n\n📖 Читать на Литрес: {u}\n{TAGS}", a
 
-def publish_with_image(text, image_url):
-    # 1. Публикуем пост с текстом
-    res = vk("wall.post", owner_id=f"-{GROUP_ID}", from_group=1, message=text, attachments="")
-    post_id = res["post_id"]
-    log(f"Пост опубликован, id {post_id}")
+def publish(text, attachment):
+    # Если есть вложение (фото), прикрепляем его. Если нет - пост только с текстом.
+    params = {"owner_id": f"-{GROUP_ID}", "from_group": 1, "message": text}
+    if attachment:
+        params["attachments"] = attachment
     
-    # 2. Публикуем комментарий с картинкой
-    try:
-        # ВК подтянет картинку из ссылки в комментарии
-        comment_text = f" Иллюстрация к роману:\n{image_url}"
-        vk("wall.createComment", owner_id=f"-{GROUP_ID}", post_id=post_id, message=comment_text, from_group=1)
-        log("✅ Картинка добавлена в комментарий")
-    except Exception as e:
-        log(f"⚠️ Не удалось добавить комментарий с картинкой: {e}")
-        
-    return post_id
+    res = vk("wall.post", **params)
+    log(f"Пост опубликован, id {res['post_id']}")
+    return res["post_id"]
 
 def telegram(msg):
     if TG_TOKEN and TG_CHAT:
@@ -175,13 +206,28 @@ def main():
 
     text, theme = build_post(book, mode, day)
     
-    img_url = ""
+    # Попытка загрузить фото
+    attachment = ""
     try:
-        img_url = make_image_link(theme)
+        img_path = make_image_file(theme)
+        attachment = upload_photo_to_vk(img_path)
     except Exception as e:
-        log(f"⚠️ Картинка не создана: {e}")
+        log(f"⚠️ Ошибка при работе с картинкой: {e}")
+    
+    # Если фото не загрузилось, добавляем ссылку в текст (запасной вариант)
+    if not attachment:
+        try:
+             # Генерируем ссылку заново для текста
+             p = ("Atmospheric cinematic illustration for a russian adventure thriller novel, "
+                 + theme + ", dramatic light, no text, no letters")
+             url = ("https://image.pollinations.ai/prompt/" + requests.utils.quote(p)
+                   + "?width=1200&height=800&nologo=true&seed=" + str(datetime.date.today().toordinal()))
+             text += f"\n\n🖼 Иллюстрация: {url}"
+             log("Добавлена ссылка на картинку в текст")
+        except:
+             pass
 
-    pid = publish_with_image(text, img_url)
+    pid = publish(text, attachment)
     
     report_msg = (f"✅ ПОСТ ОПУБЛИКОВАН!\n"
                   f"📖 Книга: {book['title']}\n"
@@ -205,3 +251,4 @@ if __name__ == "__main__":
         log(f"❌ КРИТИЧЕСКАЯ ОШИБКА: {e}")
         telegram("❌ АГЕНТ УПАЛ:\n" + "\n".join(REPORT))
         raise
+
