@@ -106,6 +106,12 @@ def upload_photo(data):
     """Как в PAVRUS: фото через ЛИЧНЫЙ токен администратора"""
     up = vk("photos.getWallUploadServer", token=VK_USER_TOKEN, group_id=GROUP_ID)["upload_url"]
     j = requests.post(up, files={"photo": ("i.jpg", data, "image/jpeg")}, timeout=120).json()
+    log(f"📦 Ответ сервера ВК: ключи={list(j.keys())}")
+    
+    if not j.get("photo"):
+        log("⚠️ В ответе нет поля 'photo' — у токена нет права 'photos'")
+        raise RuntimeError("сервер ВК не вернул поле photo")
+    
     p = None
     for ex in ({"group_id": GROUP_ID}, {}):
         try:
