@@ -10,7 +10,7 @@ GROQ_KEY = os.environ.get("GROQ_KEY", "")
 OR_KEY = os.environ.get("OPENROUTER_KEY", "")
 TG_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
 TG_CHAT = os.environ.get("TELEGRAM_CHAT_ID", "")
-VK_API = "https://api.vk.com/method/"
+VK_API = "https://api.vk.ru/method/" # <-- ОБНОВЛЕНО НА VK.RU
 TAGS = "#ПавелГнесюк #ТарскиеЛегенды #Хранители #книги #романы"
 REPORT = []
 
@@ -207,7 +207,9 @@ def main():
         except: pass
 
     pid = publish(text, attachment)
-    post_url = f"https://vk.com/wall-{GROUP_ID}_{pid}"
+    
+    # <-- ОБНОВЛЕНО НА VK.RU
+    post_url = f"https://vk.ru/wall-{GROUP_ID}_{pid}"
     
     report_msg = (f"✅ ПОСТ ОПУБЛИКОВАН!\n📖 Книга: {book['title']}\n🎯 Режим: {mode}\n🆔 ID: {pid}\n🔗 Ссылка: {post_url}")
     telegram(report_msg + "\n\n" + "\n".join(REPORT))
@@ -224,4 +226,3 @@ if __name__ == "__main__":
         log(f"❌ КРИТИЧЕСКАЯ ОШИБКА: {e}")
         telegram("❌ АГЕНТ УПАЛ:\n" + "\n".join(REPORT))
         raise
-
