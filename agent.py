@@ -19,7 +19,6 @@ def vk(method, **params):
     params.update(access_token=VK_TOKEN, v="5.131")
     r = requests.post(VK_API + method, data=params, timeout=30).json()
     if "error" in r:
-        # Детальный вывод ошибки ВК
         err = r['error']
         log(f"❌ VK API Error [{method}]: code={err.get('error_code')}, msg={err.get('error_msg')}")
         raise RuntimeError(f"VK error {method}: {err}")
@@ -119,9 +118,9 @@ def make_image_file(theme):
     return path
 
 def upload_photo_to_vk(path):
-    """Алгоритм загрузки фото через токен группы"""
+    """Алгоритм загрузки фото через токен группы (по инструкции Алисы)"""
     try:
-        # 1. Получаем сервер
+        # 1. Получаем сервер для загрузки на стену
         server_data = vk("photos.getWallUploadServer", group_id=GROUP_ID)
         upload_url = server_data["upload_url"]
         
@@ -133,7 +132,7 @@ def upload_photo_to_vk(path):
              log(f"❌ Ошибка загрузки файла на сервер ВК: {upload_resp}")
              return None
 
-        # 3. Сохраняем фото
+        # 3. Сохраняем фото как фото для стены
         saved_photos = vk("photos.saveWallPhoto", 
                           photo=upload_resp["photo"], 
                           server=upload_resp["server"], 
@@ -217,7 +216,6 @@ def main():
     # Если фото не загрузилось, добавляем ссылку в текст (запасной вариант)
     if not attachment:
         try:
-             # Генерируем ссылку заново для текста
              p = ("Atmospheric cinematic illustration for a russian adventure thriller novel, "
                  + theme + ", dramatic light, no text, no letters")
              url = ("https://image.pollinations.ai/prompt/" + requests.utils.quote(p)
