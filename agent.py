@@ -2,13 +2,13 @@
 import os, json, datetime, requests
 
 # ================= НАСТРОЙКИ =================
-VK_TOKEN = os.environ["VK_TOKEN"]                     # токен группы — для постов
-VK_USER_TOKEN = os.environ.get("VK_USER_TOKEN", "")   # личный токен админа — для фото (метод PAVRUS)
+VK_TOKEN = os.environ["VK_TOKEN"] # токен группы — для постов
+VK_USER_TOKEN = os.environ.get("VK_USER_TOKEN", "") # личный токен админа — для фото (метод PAVRUS)
 GROUP_ID = "191540984"
 GROQ_KEY = os.environ.get("GROQ_KEY", "")
-OR_KEY   = os.environ.get("OPENROUTER_KEY", "")
+OR_KEY = os.environ.get("OPENROUTER_KEY", "")
 TG_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
-TG_CHAT  = os.environ.get("TELEGRAM_CHAT_ID", "")
+TG_CHAT = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 VK_API = "https://api.vk.com/method/"
 POLLINATIONS_API = "https://image.pollinations.ai/prompt/"
@@ -87,19 +87,38 @@ def ai_text(prompt):
             f"Увлекательный сюжет, неожиданные повороты и глубокие персонажи ждут вас.\n\n"
             f"👉 Читать на Литрес: https://litres.ru\n\n{TAGS}")
 
-# ================= КАРТИНКА (МЕТОД PAVRUS) =================
+# ================= КАРТИНКА (БЕЗ РАСТЯГИВАНИЯ) =================
+def jpeg_size(data):
+    """Читаем фактический размер картинки из её байтов"""
+    i = 2
+    while i + 9 < len(data):
+        if data[i] != 0xFF:
+            i += 1; continue
+        m = data[i + 1]
+        if m in (0xC0, 0xC1, 0xC2, 0xC3):
+            h = int.from_bytes(data[i+5:i+7], "big")
+            w = int.from_bytes(data[i+7:i+9], "big")
+            return w, h
+        if m == 0xD8 or 0xD0 <= m <= 0xD7:
+            i += 2; continue
+        seg = int.from_bytes(data[i+2:i+4], "big")
+        i += 2 + seg
+    return 0, 0
+
 def make_image_bytes(theme):
     clean_theme = "".join(c for c in theme if c.isalnum() or c.isspace())[:120].strip()
     p = ("Atmospheric cinematic illustration for a russian adventure thriller novel, "
          + clean_theme + ", dramatic light, no text, no letters")
+    # Родной размер генератора: создаётся и публикуется 1:1, без растягивания
     url = (POLLINATIONS_API + requests.utils.quote(p)
-           + "?width=1200&height=800&nologo=true&seed=" + str(datetime.date.today().toordinal()))
+           + "?width=1024&height=768&nologo=true&seed=" + str(datetime.date.today().toordinal()))
     log("Скачивание картинки...")
     r = requests.get(url, timeout=180)
     r.raise_for_status()
     if not r.headers.get("content-type", "").startswith("image"):
         raise RuntimeError("ответ не изображение")
-    log(f"Картинка: {len(r.content)} байт")
+    w, h = jpeg_size(r.content)
+    log(f"Картинка: {len(r.content)} байт, фактический размер: {w}x{h}")
     return r.content
 
 def upload_photo(data):
@@ -107,11 +126,9 @@ def upload_photo(data):
     up = vk("photos.getWallUploadServer", token=VK_USER_TOKEN, group_id=GROUP_ID)["upload_url"]
     j = requests.post(up, files={"photo": ("i.jpg", data, "image/jpeg")}, timeout=120).json()
     log(f"📦 Ответ сервера ВК: ключи={list(j.keys())}")
-    
     if not j.get("photo"):
         log("⚠️ В ответе нет поля 'photo' — у токена нет права 'photos'")
         raise RuntimeError("сервер ВК не вернул поле photo")
-    
     p = None
     for ex in ({"group_id": GROUP_ID}, {}):
         try:
@@ -186,7 +203,7 @@ def main():
             clean_theme = "".join(c for c in theme if c.isalnum() or c.isspace())[:120].strip()
             p = ("Atmospheric cinematic illustration for a russian adventure thriller novel, "
                  + clean_theme + ", dramatic light, no text")
-            url = POLLINATIONS_API + requests.utils.quote(p) + "?width=1200&height=800&nologo=true"
+            url = POLLINATIONS_API + requests.utils.quote(p) + "?width=1024&height=768&nologo=true"
             text += f"\n\n🖼 Иллюстрация: {url}"
             log("Добавлена ссылка на картинку в текст")
         except Exception:
@@ -211,3 +228,4 @@ if __name__ == "__main__":
         log(f"❌ КРИТИЧЕСКАЯ ОШИБКА: {e}")
         telegram("❌ АГЕНТ УПАЛ:\n" + "\n".join(REPORT))
         raise
+
