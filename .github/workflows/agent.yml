@@ -13,7 +13,7 @@ jobs:
           python-version: "3.11"
       - run: pip install requests
       - name: Run VK agent
-        run: python vk_agent.py
+        run: python agent.py
         env:
           VK_TOKEN: ${{ secrets.VK_TOKEN }}
           VK_GROUP_ID: ${{ secrets.VK_GROUP_ID }}
