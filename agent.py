@@ -4,6 +4,7 @@ import os, json, datetime, requests, time
 GROQ_KEY = os.environ.get("GROQ_KEY", "")
 OR_KEY   = os.environ.get("OPENROUTER_KEY", "")
 VK_TOKEN = os.environ.get("VK_TOKEN", "").strip()
+VK_USER_TOKEN = os.environ.get("VK_USER_TOKEN", "").strip()   # токен админа для фото
 VK_GROUP_ID = os.environ.get("VK_GROUP_ID", "").strip().lstrip("-")
 
 VK_API = "https://api.vk.com/method/"
@@ -125,9 +126,9 @@ def build_quote_post(book, day):
         return build_vk_post(book)
     return clean_txt(txt)
 
-def vk_call(method, params=None):
+def vk_call(method, params=None, token=None):
     p = dict(params or {})
-    p["access_token"] = VK_TOKEN
+    p["access_token"] = token or VK_TOKEN
     p["v"] = VK_V
     try:
         r = requests.post(VK_API + method, data=p, timeout=30).json()
@@ -140,23 +141,24 @@ def vk_call(method, params=None):
     return r.get("response")
 
 def vk_upload_photo(img_bytes):
-    # Способ 1: сервер для стены (групповому токену недоступен)
-    srv = vk_call("photos.getWallUploadServer", {"group_id": VK_GROUP_ID})
+    tok = VK_USER_TOKEN or VK_TOKEN
+    # Способ 1: сервер для стены
+    srv = vk_call("photos.getWallUploadServer", {"group_id": VK_GROUP_ID}, token=tok)
     if srv and srv.get("upload_url"):
         try:
             r = requests.post(srv["upload_url"],
                               files={"photo": ("cover.jpg", img_bytes, "image/jpeg")}, timeout=120).json()
             saved = vk_call("photos.saveWallPhoto",
                             {"photo": r.get("photo"), "server": r.get("server"),
-                             "hash": r.get("hash"), "group_id": VK_GROUP_ID})
+                             "hash": r.get("hash"), "group_id": VK_GROUP_ID}, token=tok)
             if saved:
                 p = saved[0]
                 log("✅ ВК: картинка загружена (стена)")
                 return f"photo{p['owner_id']}_{p['id']}"
         except Exception as e:
             log(f"⚠️ VK upload wall: {e}")
-    # Способ 2: альбом сообщества (работает с групповым токеном)
-    srv = vk_call("photos.getUploadServer", {"group_id": VK_GROUP_ID})
+    # Способ 2: альбом сообщества
+    srv = vk_call("photos.getUploadServer", {"group_id": VK_GROUP_ID}, token=tok)
     if not srv or not srv.get("upload_url"):
         return None
     try:
@@ -166,13 +168,12 @@ def vk_upload_photo(img_bytes):
         log(f"⚠️ VK upload album: {e}")
         return None
     saved = vk_call("photos.save", {"photo": r.get("photo"), "server": r.get("server"),
-                                    "hash": r.get("hash"), "group_id": VK_GROUP_ID})
+                                    "hash": r.get("hash"), "group_id": VK_GROUP_ID}, token=tok)
     if not saved:
         return None
     p = saved[0]
     log("✅ ВК: картинка загружена (альбом)")
     return f"photo{p['owner_id']}_{p['id']}"
-
 def vk_post_wall(text, attachment=None):
     params = {"owner_id": "-" + VK_GROUP_ID, "message": text, "from_group": 1}
     if attachment:
