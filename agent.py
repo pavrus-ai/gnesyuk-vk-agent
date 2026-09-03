@@ -140,22 +140,37 @@ def vk_call(method, params=None):
     return r.get("response")
 
 def vk_upload_photo(img_bytes):
+    # Способ 1: сервер для стены (групповому токену недоступен)
     srv = vk_call("photos.getWallUploadServer", {"group_id": VK_GROUP_ID})
+    if srv and srv.get("upload_url"):
+        try:
+            r = requests.post(srv["upload_url"],
+                              files={"photo": ("cover.jpg", img_bytes, "image/jpeg")}, timeout=120).json()
+            saved = vk_call("photos.saveWallPhoto",
+                            {"photo": r.get("photo"), "server": r.get("server"),
+                             "hash": r.get("hash"), "group_id": VK_GROUP_ID})
+            if saved:
+                p = saved[0]
+                log("✅ ВК: картинка загружена (стена)")
+                return f"photo{p['owner_id']}_{p['id']}"
+        except Exception as e:
+            log(f"⚠️ VK upload wall: {e}")
+    # Способ 2: альбом сообщества (работает с групповым токеном)
+    srv = vk_call("photos.getUploadServer", {"group_id": VK_GROUP_ID})
     if not srv or not srv.get("upload_url"):
         return None
     try:
         r = requests.post(srv["upload_url"],
-                          files={"photo": ("cover.jpg", img_bytes, "image/jpeg")}, timeout=120).json()
+                          files={"file": ("cover.jpg", img_bytes, "image/jpeg")}, timeout=120).json()
     except Exception as e:
-        log(f"⚠️ VK upload: {e}")
+        log(f"⚠️ VK upload album: {e}")
         return None
-    saved = vk_call("photos.saveWallPhoto",
-                    {"photo": r.get("photo"), "server": r.get("server"),
-                     "hash": r.get("hash"), "group_id": VK_GROUP_ID})
+    saved = vk_call("photos.save", {"photo": r.get("photo"), "server": r.get("server"),
+                                    "hash": r.get("hash"), "group_id": VK_GROUP_ID})
     if not saved:
         return None
     p = saved[0]
-    log("✅ ВК: картинка загружена")
+    log("✅ ВК: картинка загружена (альбом)")
     return f"photo{p['owner_id']}_{p['id']}"
 
 def vk_post_wall(text, attachment=None):
