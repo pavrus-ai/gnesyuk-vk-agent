@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*-
-import os, json, datetime, requests, time
+import os, json, datetime, requests, time, io, hashlib
+from email.utils import formatdate
+from PIL import Image
+import urllib3
+urllib3.disable_warnings()
 
 GROQ_KEY = os.environ.get("GROQ_KEY", "")
 OR_KEY   = os.environ.get("OPENROUTER_KEY", "")
 VK_TOKEN = os.environ.get("VK_TOKEN", "").strip()
-VK_USER_TOKEN = os.environ.get("VK_USER_TOKEN", "").strip()   # токен админа для фото
+VK_USER_TOKEN = os.environ.get("VK_USER_TOKEN", "").strip()
 VK_GROUP_ID = os.environ.get("VK_GROUP_ID", "").strip().lstrip("-")
-
 VK_API = "https://api.vk.com/method/"
 VK_V = "5.131"
 POLLINATIONS_API = "https://image.pollinations.ai/prompt/"
@@ -16,7 +19,7 @@ RU = "\n\nВАЖНО: Пиши ТОЛЬКО на русском языке."
 def log(msg):
     print(msg, flush=True)
 
-log("Версия ℹ️ vk-agent v2 (яркие резкие сцены по тексту поста, flux 1280x960)")
+log("Версия ℹ️ vk-agent v3 (с конвертацией JPEG + сохранение локально)")
 
 def _extract(r):
     try: return r["choices"][0]["message"]["content"].strip()
@@ -91,7 +94,7 @@ def build_scene(post_text):
     scene = ai_scene(prompt)
     if scene:
         log(f"🎨 Сцена для картинки: {scene[:120]}")
-    return scene
+        return scene
 
 def clean_txt(t):
     return t.replace("**","").replace("##","").strip()
@@ -110,7 +113,7 @@ def build_vk_post(book):
               f"4. Закончи вопросом или крючком.")
     txt = ai_text(prompt, minlen=300)
     if not txt:
-        log("⚠️ Пост не создан — стандартный текст.")
+        log("️ Пост не создан — стандартный текст.")
         txt = (f"РОМАН «{t.upper()}»: ИСТОРИЯ, КОТОРАЯ ЗАТЯГИВАЕТ\n\n{a}")
     return clean_txt(txt)
 
@@ -141,30 +144,29 @@ def vk_call(method, params=None, token=None):
     return r.get("response")
 
 def vk_upload_photo(img_bytes):
-    """Надёжная загрузка фото на стену группы ВК + сохранение локально"""
+    """Надёжная загрузка фото на стену группы ВК с конвертацией в JPEG"""
     tok = VK_USER_TOKEN or VK_TOKEN
     if not tok:
         log("⚠️ Нет токена для загрузки фото")
         return None
     
-    # СОХРАНЯЕМ ЛОКАЛЬНО (чтобы git мог закоммитить)
+    # Конвертируем в чистый JPEG (ВК требует именно JPEG)
+    try:
+        im = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        buf = io.BytesIO()
+        im.save(buf, "JPEG", quality=92)
+        img_bytes = buf.getvalue()
+        log(f"✅ Картинка конвертирована в JPEG: {len(img_bytes)} байт")
+    except Exception as e:
+        log(f"⚠️ Не удалось конвертировать в JPEG: {e}")
+    
+    # Сохраняем локально (чтобы git мог закоммитить)
     os.makedirs("img", exist_ok=True)
     day = datetime.date.today().toordinal()
     local_path = f"img/vk_{day}.jpg"
     with open(local_path, "wb") as f:
         f.write(img_bytes)
-    log(f"💾 Сохранено локально: {local_path} ({len(img_bytes)} байт)")
-    
-    # Конвертируем в чистый JPEG (ВК требует именно JPEG)
-    try:
-        from PIL import Image
-        im = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-        buf = io.BytesIO()
-        im.save(buf, "JPEG", quality=92)
-        img_bytes = buf.getvalue()
-        log(f"✅ Конвертировано в JPEG: {len(img_bytes)} байт")
-    except Exception as e:
-        log(f"⚠️ Не удалось конвертировать: {e}")
+    log(f"💾 Сохранено локально: {local_path}")
     
     # Загрузка на стену (единственный рабочий способ для постов)
     srv = vk_call("photos.getWallUploadServer", {"group_id": VK_GROUP_ID}, token=tok)
@@ -201,7 +203,7 @@ def vk_upload_photo(img_bytes):
     except Exception as e:
         log(f"⚠️ VK upload: {e}")
         return None
-    
+
 def vk_post_wall(text, attachment=None):
     params = {"owner_id": "-" + VK_GROUP_ID, "message": text, "from_group": 1}
     if attachment:
@@ -209,27 +211,28 @@ def vk_post_wall(text, attachment=None):
     res = vk_call("wall.post", params)
     if res:
         log(f"✅ ВК: пост опубликован: https://vk.com/wall-{VK_GROUP_ID}_{res.get('post_id')}")
-    return res
+        return res
 
 def main():
     if not VK_TOKEN or not VK_GROUP_ID:
-        log("⚠️ Нет VK_TOKEN/VK_GROUP_ID — пропуск ВК")
+        log("️ Нет VK_TOKEN/VK_GROUP_ID — пропуск ВК")
         return
+    
     books = json.load(open("books.json", encoding="utf-8"))["books"]
     day = datetime.date.today().toordinal()
     book = books[day % len(books)]
     log(f"📚 Книга дня: «{book['title']}» ({book['series']})")
-
+    
     # Каждый третий день — разбор цитаты, иначе анонс
     if day % 3 == 0 and book.get("fragments"):
         post = build_quote_post(book, day)
     else:
         post = build_vk_post(book)
+    
     log(f"✂️ Заголовок поста: {post.split(chr(10))[0][:150]}")
-
     link_part = f"\n\n📖 Читайте на ЛитРес: {book['url']}"
     caption = trim_text(post, 2000 - len(link_part) - len(TAGS) - 2) + link_part + "\n\n" + TAGS
-
+    
     # --- Картинка: яркая, чёткая сцена по тексту поста ---
     scene = build_scene(post)
     base_img = scene if scene else book.get("about", "")[:120]
@@ -239,17 +242,18 @@ def main():
          "highly detailed, sharp focus, crisp edges, high resolution, full-body figures in action "
          "seen from behind or from a distance, faces NOT visible, no close-up portraits, no text")
     run_no = int(os.environ.get("GITHUB_RUN_NUMBER", "0"))
-    seed = day + 3000000 + (run_no % 100)   # свой диапазон — картинки ВК отличаются от других площадок
+    seed = day + 3000000 + (run_no % 100)
     url = (POLLINATIONS_API + requests.utils.quote(p) + f"?nologo=true&seed={seed}&model=flux&width=1280&height=960")
     log("Скачивание картинки (flux, 1280x960)...")
     r = requests.get(url, timeout=240)
     r.raise_for_status()
     img_bytes = r.content
     log(f"✅ Картинка: {len(img_bytes)} байт")
-
+    
     # --- Публикация в группу ВК ---
     att = vk_upload_photo(img_bytes)
     vk_post_wall(caption, att)
+    
     log("=" * 50)
     log("✅ FINISH: пост с картинкой → ВК!")
     log("=" * 50)
@@ -258,5 +262,5 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        log(f"❌ КРИТИЧЕСКАЯ ОШИБКА: {e}")
+        log(f" КРИТИЧЕСКАЯ ОШИБКА: {e}")
         raise
