@@ -15,19 +15,20 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install requests beautifulsoup4
+      - run: pip install requests Pillow
       - name: Run Music agent
         run: python music_agent.py
         env:
           GROQ_KEY: ${{ secrets.GROQ_KEY }}
           OPENROUTER_KEY: ${{ secrets.OPENROUTER_KEY }}
           VK_TOKEN: ${{ secrets.VK_TOKEN }}
+          VK_USER_TOKEN: ${{ secrets.VK_USER_TOKEN }}
           VK_GROUP_ID: ${{ secrets.VK_GROUP_ID }}
       - name: Commit music images
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add img/ music_cache.json music_history.json 2>/dev/null || true
+          git add img/ music_history.json 2>/dev/null || true
           git diff --quiet && git diff --staged --quiet || (git commit -m "chore: music [skip ci]" && git push)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
