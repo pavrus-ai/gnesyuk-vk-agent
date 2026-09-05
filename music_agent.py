@@ -220,9 +220,29 @@ def vk_post(message, attachment=None):
         return True
     return False
 
+def load_albums():
+    raw = open(MUSIC_FILE, encoding="utf-8").read().strip()
+    try:
+        return json.loads(raw)["albums"]
+    except Exception:
+        log("⚠️ music.json из двух частей — склеиваю автоматически")
+        dec = json.JSONDecoder()
+        data1, end1 = dec.raw_decode(raw)
+        albums = data1["albums"]
+        rest = raw[end1:].strip()
+        if rest:
+            if rest.startswith("}"):
+                rest = rest[1:]
+            if rest.startswith(","):
+                rest = rest[1:]
+            data2 = json.loads('{"albums":[' + rest)
+            albums += data2["albums"]
+        log(f"✅ Склеено: всего альбомов {len(albums)}")
+        return albums
+
 def main():
     try:
-        albums = json.load(open(MUSIC_FILE, encoding="utf-8"))["albums"]
+        albums = load_albums()
     except Exception as e:
         log(f"❌ Ошибка чтения music.json: {e}")
         return
