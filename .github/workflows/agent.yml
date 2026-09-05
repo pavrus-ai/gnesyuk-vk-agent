@@ -6,12 +6,14 @@ on:
 jobs:
   vkpost:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install requests
+      - run: pip install requests Pillow
       - name: Run VK agent
         run: python agent.py
         env:
@@ -20,3 +22,11 @@ jobs:
           VK_GROUP_ID: ${{ secrets.VK_GROUP_ID }}
           GROQ_KEY: ${{ secrets.GROQ_KEY }}
           OPENROUTER_KEY: ${{ secrets.OPENROUTER_KEY }}
+      - name: Commit images
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add img/
+          git diff --quiet && git diff --staged --quiet || (git commit -m "chore: book images [skip ci]" && git push)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
