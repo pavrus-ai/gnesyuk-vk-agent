@@ -10,16 +10,12 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
       - run: pip install requests beautifulsoup4
-
       - name: Run Music agent
         run: python music_agent.py
         env:
@@ -27,7 +23,6 @@ jobs:
           OPENROUTER_KEY: ${{ secrets.OPENROUTER_KEY }}
           VK_TOKEN: ${{ secrets.VK_TOKEN }}
           VK_GROUP_ID: ${{ secrets.VK_GROUP_ID }}
-
       - name: Commit music images
         run: |
           git config --global user.name "github-actions[bot]"
