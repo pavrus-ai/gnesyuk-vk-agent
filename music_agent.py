@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
-import os, re, json, random, requests, datetime, hashlib
+import os, re, json, random, requests, hashlib
 from bs4 import BeautifulSoup
 
+# --- Настройки из окружения (те же, что в agent.py) ---
 VK_TOKEN = os.getenv("VK_TOKEN", "")
 VK_GROUP = os.getenv("VK_GROUP_ID", "")
 GROQ_KEY = os.getenv("GROQ_KEY", "")
@@ -12,8 +13,10 @@ HISTORY_FILE = "music_history.json"
 CACHE_FILE = "music_cache.json"
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
-def log(msg): print(msg, flush=True)
-log("Версия ℹ️ music-agent v2 (VK Music парсинг + пост в ВК)")
+def log(msg): 
+    print(msg, flush=True)
+
+log("Версия ℹ️ music-agent v3 (VK Music парсинг + пост в ВК)")
 
 # --- 1. Парсинг VK Music ---
 def parse_vk_music():
@@ -91,7 +94,7 @@ def generate_text(track, album):
         f"7. Не используй хэштеги, кроме #ПавелГнесюк #музыка в самом конце."
     )
     
-    # Пробуем доступные модели
+    # Пробуем доступные модели (как в agent.py)
     models = [
         ("groq", "llama-3.3-70b-versatile", GROQ_KEY),
         ("openrouter", "meta-llama/llama-3.3-70b-instruct:free", OR_KEY),
@@ -110,7 +113,7 @@ def generate_text(track, album):
                 "messages": [{"role": "user", "content": prompt}]
             }, timeout=45).json()
             
-            if "error" not in r:
+            if "error" not in r and "choices" in r:
                 text = r["choices"][0]["message"]["content"].strip()
                 if 300 <= len(text) <= 750:
                     log(f"✅ Текст сгенерирован ({provider}): {len(text)} симв.")
@@ -121,7 +124,7 @@ def generate_text(track, album):
     # Fallback, если ИИ недоступен
     log("⚠️ ИИ недоступен, использую шаблон")
     return (
-        f"🎵 «{track['title']}» — новая песня из альбома «{album['title']}».\n\n"
+        f"🎵 «{track['title']}» — песня из альбома «{album['title']}».\n\n"
         f"Этот альбом раскрывает глубокие смыслы и атмосферу, в которую хочется погрузиться.\n\n"
         f"🎧 Слушайте на VK Музыке: {album['url']}\n\n#ПавелГнесюк #музыка"
     )
@@ -211,14 +214,17 @@ def main():
     if cover_bytes:
         os.makedirs("img", exist_ok=True)
         slug = hashlib.md5(f"{track['id']}".encode()).hexdigest()[:8]
-        with open(f"img/music_{slug}.jpg", "wb") as f:
+        img_path = f"img/music_{slug}.jpg"
+        with open(img_path, "wb") as f:
             f.write(cover_bytes)
+        log(f"💾 Сохранено локально: {img_path}")
         
         attachment = vk_upload_photo(cover_bytes)
         if attachment:
             vk_post(text, attachment)
         else:
-            vk_post(text) # Публикуем без фото, если загрузка не удалась
+            log("⚠️ Не удалось загрузить фото в ВК — публикую без картинки")
+            vk_post(text)
     else:
         vk_post(text)
     
