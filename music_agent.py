@@ -122,3 +122,155 @@ def generate_text(track, album):
 
 def get_cover(album, track):
     # 1. Ссылка из music.json
+    url = album.get("cover", "")
+    if url:
+        try:
+            r = requests.get(url, timeout=30)
+            if r.headers.get("content-type", "").startswith("image") and len(r.content) > 1000:
+                log(f"✅ Обложка по ссылке: {len(r.content)} байт")
+                return r.content
+        except Exception as e:
+            log(f"⚠️ Обложка по ссылке не скачалась: {e}")
+    # 2. Файл из папки covers/ репозитория
+    fname = COVER_FILES.get(album.get("title", ""), "")
+    if fname:
+        try:
+            r = requests.get(COVERS_BASE + fname, timeout=30)
+            if r.status_code == 200 and len(r.content) > 1000:
+                log(f"✅ Обложка из covers/: {fname}")
+                return r.content
+        except Exception:
+            pass
+    # 3. Генерация квадратной обложки 1:1
+    log("🎨 Генерирую квадратную обложку (1:1)...")
+    coauthors = f", feat. {', '.join(album.get('coauthors', []))}" if album.get("coauthors") else ""
+    p = (f"Square album artwork for {album.get('genre', 'rock')} music '{track['title']}' by Pavel Gnesyuk{coauthors}, "
+         f"mood: {album.get('about', '')[:120]}, bright vivid colors, beautiful composition, "
+         f"no text, no letters, no words")
+    seed = random.randint(1, 999999)
+    u = POLLINATIONS_API + urllib.parse.quote(p) + f"?nologo=true&seed={seed}&model=flux&width=1024&height=1024"
+    try:
+        r = requests.get(u, timeout=240)
+        if r.headers.get("content-type", "").startswith("image"):
+            log(f"✅ Сгенерированная обложка: {len(r.content)} байт")
+            return r.content
+    except Exception as e:
+        log(f"⚠️ Ошибка генерации обложки: {e}")
+    return b""
+
+def vk_call(method, params=None, token=None):
+    p = dict(params or {})
+    p["access_token"] = token or VK_TOKEN
+    p["v"] = "5.131"
+    try:
+        r = requests.post("https://api.vk.com/method/" + method, data=p, timeout=30).json()
+    except Exception as e:
+        log(f"⚠️ VK {method}: {e}")
+        return None
+    if "error" in r:
+        log(f"⚠️ VK {method}: {str(r.get('error'))[:150]}")
+        return None
+    return r.get("response")
+
+def vk_upload_photo(img_bytes):
+    tok = VK_USER_TOKEN or VK_TOKEN
+    if not tok:
+        log("⚠️ Нет токена для загрузки фото")
+        return None
+    if PIL_OK:
+        try:
+            im = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+            buf = io.BytesIO()
+            im.save(buf, "JPEG", quality=92)
+            img_bytes = buf.getvalue()
+            log(f"✅ Конвертировано в JPEG: {len(img_bytes)} байт")
+        except Exception as e:
+            log(f"⚠️ JPEG-конвертация: {e}")
+    srv = vk_call("photos.getWallUploadServer", {"group_id": VK_GROUP}, token=tok)
+    if not srv or not srv.get("upload_url"):
+        log(f"⚠️ Не получен upload_url: {srv}")
+        return None
+    try:
+        r = requests.post(srv["upload_url"],
+            files={"photo": ("cover.jpg", img_bytes, "image/jpeg")}, timeout=120).json()
+        if "photo" not in r or "server" not in r or "hash" not in r:
+            log(f"⚠️ Ошибка загрузки фото: {str(r)[:150]}")
+            return None
+        saved = vk_call("photos.saveWallPhoto",
+            {"photo": r["photo"], "server": r["server"], "hash": r["hash"], "group_id": VK_GROUP},
+            token=tok)
+        if saved and len(saved) > 0:
+            p = saved[0]
+            acc = p.get("access_key", "")
+            att = f"photo{p['owner_id']}_{p['id']}"
+            if acc: att += f"_{acc}"
+            log(f"✅ ВК: обложка загружена → {att}")
+            return att
+    except Exception as e:
+        log(f"⚠️ VK upload: {e}")
+    return None
+
+def vk_post(message, attachment=None):
+    params = {"owner_id": "-" + VK_GROUP, "message": message, "from_group": 1}
+    if attachment:
+        params["attachments"] = attachment
+    res = vk_call("wall.post", params)
+    if res:
+        log(f"✅ ВК: пост опубликован: https://vk.com/wall-{VK_GROUP}_{res.get('post_id')}")
+        return True
+    return False
+
+def main():
+    try:
+        albums = json.load(open(MUSIC_FILE, encoding="utf-8"))["albums"]
+    except Exception as e:
+        log(f"❌ Ошибка чтения music.json: {e}")
+        return
+
+    try:
+        hist = set(json.load(open(HISTORY_FILE, encoding="utf-8"))) if os.path.exists(HISTORY_FILE) else set()
+    except Exception:
+        hist = set()
+
+    pairs = [(a, s) for a in albums for s in a["songs"] if f"{a['title']}||{s['title']}" not in hist]
+    if not pairs:
+        log("🔄 Вся история пройдена — начинаю заново")
+        hist.clear()
+        pairs = [(a, s) for a in albums for s in a["songs"]]
+
+    album, track = random.choice(pairs)
+    log(f"🎵 Альбом: «{album['title']}» ({album.get('genre', '')}, {album.get('year', '')})")
+    log(f"🎶 Трек: «{track['title']}»")
+    if album.get("coauthors"):
+        log(f"👥 Соавторы: {', '.join(album['coauthors'])}")
+
+    text = generate_text(track, album)
+    cover = get_cover(album, track)
+
+    if cover:
+        os.makedirs("img", exist_ok=True)
+        slug = hashlib.md5(f"{album['title']}-{track['title']}".encode()).hexdigest()[:8]
+        with open(f"img/music_{slug}.jpg", "wb") as f:
+            f.write(cover)
+        log(f"💾 Сохранено локально: img/music_{slug}.jpg")
+        att = vk_upload_photo(cover)
+        if att:
+            vk_post(text, att)
+        else:
+            log("⚠️ Фото не загрузилось — пост без картинки")
+            vk_post(text)
+    else:
+        vk_post(text)
+
+    hist.add(f"{album['title']}||{track['title']}")
+    json.dump(list(hist), open(HISTORY_FILE, "w", encoding="utf-8"), ensure_ascii=False)
+
+    log("=" * 50)
+    log("✅ FINISH: пост о музыке опубликован в ВК!")
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as e:
+        log(f"❌ КРИТИЧЕСКАЯ ОШИБКА: {e}")
+        raise
