@@ -144,64 +144,73 @@ def vk_call(method, params=None, token=None):
     return r.get("response")
 
 def vk_upload_photo(img_bytes):
-    """Надёжная загрузка фото на стену группы ВК с конвертацией в JPEG"""
+    """Надёжная загрузка фото на стену группы ВК"""
     tok = VK_USER_TOKEN or VK_TOKEN
     if not tok:
         log("⚠️ Нет токена для загрузки фото")
         return None
     
-    # Конвертируем в чистый JPEG (ВК требует именно JPEG)
-    try:
-        im = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-        buf = io.BytesIO()
-        im.save(buf, "JPEG", quality=92)
-        img_bytes = buf.getvalue()
-        log(f"✅ Картинка конвертирована в JPEG: {len(img_bytes)} байт")
-    except Exception as e:
-        log(f"⚠️ Не удалось конвертировать в JPEG: {e}")
+    log(f"📤 Загрузка фото в ВК ({len(img_bytes)} байт)...")
     
-    # Сохраняем локально (чтобы git мог закоммитить)
-    os.makedirs("img", exist_ok=True)
-    day = datetime.date.today().toordinal()
-    local_path = f"img/vk_{day}.jpg"
-    with open(local_path, "wb") as f:
-        f.write(img_bytes)
-    log(f"💾 Сохранено локально: {local_path}")
-    
-    # Загрузка на стену (единственный рабочий способ для постов)
+    # 1. Получаем URL для загрузки на стену
     srv = vk_call("photos.getWallUploadServer", {"group_id": VK_GROUP_ID}, token=tok)
-    if not srv or not srv.get("upload_url"):
+    if not srv or "upload_url" not in srv:
         log(f"⚠️ Не получен upload_url: {srv}")
         return None
     
+    log(f"✅ Получен upload_url")
+    
+    # 2. Загружаем файл
     try:
-        # Загружаем файл
         r = requests.post(srv["upload_url"],
-            files={"photo": ("cover.jpg", img_bytes, "image/jpeg")}, timeout=120).json()
+            files={"photo": ("cover.jpg", img_bytes, "image/jpeg")}, 
+            timeout=120).json()
         
+        log(f"📥 Ответ upload_url: {str(r)[:200]}")
+        
+        # Проверяем, что вернулись нужные поля
         if "photo" not in r or "server" not in r or "hash" not in r:
-            log(f"⚠️ Ошибка загрузки: {str(r)[:200]}")
+            log(f"⚠️ Нет photo/server/hash в ответе: {r}")
             return None
         
-        # Сохраняем фото
+        log(f"✅ Файл загружен, photo={str(r['photo'])[:50]}...")
+        
+        # 3. Сохраняем фото
         saved = vk_call("photos.saveWallPhoto",
-            {"photo": r["photo"], "server": r["server"],
-             "hash": r["hash"], "group_id": VK_GROUP_ID}, token=tok)
+            {
+                "photo": r["photo"], 
+                "server": r["server"],
+                "hash": r["hash"], 
+                "group_id": VK_GROUP_ID
+            }, 
+            token=tok)
+        
+        log(f"📥 Ответ saveWallPhoto: {saved}")
         
         if saved and len(saved) > 0:
             p = saved[0]
+            owner_id = p.get("owner_id", "")
+            photo_id = p.get("id", "")
             acc = p.get("access_key", "")
-            attachment = f"photo{p['owner_id']}_{p['id']}"
+            
+            if not owner_id or not photo_id:
+                log(f"⚠️ Нет owner_id или id в ответе: {p}")
+                return None
+            
+            attachment = f"photo{owner_id}_{photo_id}"
             if acc:
                 attachment += f"_{acc}"
+            
             log(f"✅ ВК: картинка загружена → {attachment}")
             return attachment
         
-        log(f"⚠️ saveWallPhoto вернул пустой ответ: {saved}")
+        log(f"️ saveWallPhoto вернул пустой/неверный ответ: {saved}")
         return None
         
     except Exception as e:
-        log(f"⚠️ VK upload: {e}")
+        log(f"⚠️ VK upload error: {e}")
+        import traceback
+        log(traceback.format_exc())
         return None
 
 def vk_post_wall(text, attachment=None):
