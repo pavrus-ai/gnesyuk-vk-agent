@@ -175,7 +175,7 @@ def vk_call(method, params=None, token=None):
 def vk_upload_photo(img_bytes):
     tok = VK_USER_TOKEN or VK_TOKEN
     if not tok:
-        log("⚠️ Нет токена для загрузки фото")
+        log("⚠️ Нет токена для фото")
         return None
     if PIL_OK:
         try:
@@ -183,28 +183,33 @@ def vk_upload_photo(img_bytes):
             buf = io.BytesIO()
             im.save(buf, "JPEG", quality=92)
             img_bytes = buf.getvalue()
-            log(f"✅ Конвертировано в JPEG: {len(img_bytes)} байт")
         except Exception as e:
-            log(f"⚠️ JPEG-конвертация: {e}")
+            log(f"⚠️ JPEG: {e}")
+    
     srv = vk_call("photos.getWallUploadServer", {"group_id": VK_GROUP}, token=tok)
     if not srv or not srv.get("upload_url"):
-        log(f"⚠️ Не получен upload_url: {srv}")
+        log(f"⚠️ upload_url: {srv}")
         return None
+    
     try:
         r = requests.post(srv["upload_url"],
             files={"photo": ("cover.jpg", img_bytes, "image/jpeg")}, timeout=120).json()
-        if "photo" not in r or "server" not in r or "hash" not in r:
-            log(f"⚠️ Ошибка загрузки фото: {str(r)[:150]}")
+        
+        photo_data = r.get("photo", "")
+        if not photo_data or photo_data == "[]":
+            log(f"⚠️ VK вернул пустой photo: {str(r)[:200]}")
             return None
+        
         saved = vk_call("photos.saveWallPhoto",
-            {"photo": r["photo"], "server": r["server"], "hash": r["hash"], "group_id": VK_GROUP},
-            token=tok)
+            {"photo": photo_data, "server": r.get("server"),
+             "hash": r.get("hash"), "group_id": VK_GROUP}, token=tok)
+        
         if saved and len(saved) > 0:
             p = saved[0]
             acc = p.get("access_key", "")
             att = f"photo{p['owner_id']}_{p['id']}"
             if acc: att += f"_{acc}"
-            log(f"✅ ВК: обложка загружена → {att}")
+            log(f"✅ ВК: картинка загружена → {att}")
             return att
     except Exception as e:
         log(f"⚠️ VK upload: {e}")
