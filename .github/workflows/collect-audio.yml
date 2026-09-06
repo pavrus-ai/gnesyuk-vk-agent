@@ -1,0 +1,27 @@
+name: Collect Audio IDs
+on:
+  workflow_dispatch:
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install requests
+      - name: Collect audio IDs
+        run: python collect_audio_ids.py
+        env:
+          VK_TOKEN: ${{ secrets.VK_USER_TOKEN }}
+          VK_GROUP_ID: ${{ secrets.VK_GROUP_ID }}
+      - name: Commit audio_ids.json
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add audio_ids.json
+          git diff --quiet && git diff --staged --quiet || (git commit -m "chore: audio ids [skip ci]" && git push)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
