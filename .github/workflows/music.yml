@@ -1,4 +1,8 @@
-- name: Запустить музыкальный агент
+on:
+  schedule:
+    - cron: "0 8 * * *"
+  workflow_dispatch:
+name: Music Agent
   run: python music_agent.py
   env:
     VK_ACCESS_TOKEN: ${{ secrets.VK_ACCESS_TOKEN }}
