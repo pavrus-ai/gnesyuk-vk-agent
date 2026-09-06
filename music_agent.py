@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Музыкальный агент для автоматической публикации альбомов в ВКонтакте
-Автор: Павел Гнесюк
-Версия: 2.0
+Музыкальный агент для публикации альбомов в ВКонтакте
+Версия 3.0 — для GitHub Actions: без input(), устойчив к битому JSON
 """
 
 import json
-import time
 import logging
 import os
+import sys
+import time
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, List
+
 import requests
 
 # ============================================================
@@ -19,250 +20,224 @@ import requests
 # ============================================================
 
 CONFIG = {
-    # Токен доступа ВКонтакте
-    "vk_access_token": "ВАШ_ТОКЕН_ВК",
-    
-    # Идентификатор группы или страницы для публикации
-    "owner_id": -2001000000,
-    
-    # Файл с данными о музыке
+    # Токен из секрета GitHub (Settings → Secrets → VK_ACCESS_TOKEN)
+    "vk_access_token": os.environ.get("VK_ACCESS_TOKEN", ""),
+
+    # ID группы (отрицательный) или страницы. Тоже из секрета
+    "owner_id": int(os.environ.get("VK_OWNER_ID", "0")),
+
     "data_file": "music.json",
-    
-    # Настройки публикации
-    "publish_interval_hours": 24,
-    "max_albums_per_day": 1,
-    
-    # Шаблон поста
-    "post_template": """🎵 {artist} представляет {release_type} «{album_title}»!
+    "published_file": "published_albums.json",
 
-🎼 Жанр: {genre}
-📀 Треков: {track_count}
+    # Минимальный интервал между публикациями (часов). 0 = без ограничения
+    "publish_interval_hours": 0,
 
-{track_list}
-
-🎧 Слушайте прямо сейчас!
-
-#музыка #альбом #новинка #{artist_tag}""",
-    
-    # Логирование
-    "log_file": "music_agent.log",
-    "log_level": "INFO",
-    
-    # Файл для отслеживания опубликованных альбомов
-    "published_file": "published_albums.json"
+    "post_template": (
+        "🎵 {artist} представляет: {release_type} «{album_title}»!\n\n"
+        "🎼 Жанр: {genre}\n"
+        "📀 Треков: {track_count}\n\n"
+        "{track_list}\n\n"
+        "🎧 Слушайте прямо сейчас!\n\n"
+        "#музыка #альбом #новинка #{artist_tag}"
+    ),
 }
 
-# ============================================================
-# ЛОГИРОВАНИЕ
-# ============================================================
-
 logging.basicConfig(
-    level=getattr(logging, CONFIG["log_level"]),
+    level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.FileHandler(CONFIG["log_file"], encoding="utf-8"),
-        logging.StreamHandler()
-    ]
+    handlers=[logging.StreamHandler()],
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("music_agent")
 
-# ============================================================
-# КЛАСС АГЕНТА
-# ============================================================
 
 class MusicAgent:
-    """Агент для автоматической публикации музыки в ВКонтакте"""
-    
+    """Агент публикации музыки в ВК"""
+
     def __init__(self, config: Dict):
         self.config = config
         self.access_token = config["vk_access_token"]
         self.owner_id = config["owner_id"]
         self.api_version = "5.131"
         self.base_url = "https://api.vk.com/method"
-        
+
         self.data = self._load_data()
         self.published = self._load_published()
-        
+
         logger.info("🚀 Музыкальный агент инициализирован")
         logger.info(f"📊 Альбомов: {len(self.data.get('albums', []))}")
         logger.info(f"📊 EP: {len(self.data.get('eps', []))}")
         logger.info(f"📊 Синглов: {len(self.data.get('singles', []))}")
-    
+
     # ========================================================
-    # РАБОТА С ФАЙЛАМИ
+    # ЧТЕНИЕ ФАЙЛОВ (устойчивое к "склеенному" JSON)
     # ========================================================
-    
+
     def _load_data(self) -> Dict:
-        """Загрузка данных о музыке"""
-        try:
-            with open(self.config["data_file"], "r", encoding="utf-8") as f:
-                data = json.load(f)
-            logger.info(f"✅ Данные загружены из {self.config['data_file']}")
-            return data
-        except FileNotFoundError:
-            logger.error(f"❌ Файл {self.config['data_file']} не найден!")
+        """Читает music.json. Если в файле несколько JSON-документов,
+        выбирает самый полный (с наибольшим числом релизов)."""
+        path = self.config["data_file"]
+        if not os.path.exists(path):
+            logger.error(f"❌ Файл {path} не найден!")
             return {"albums": [], "eps": [], "singles": []}
-        except json.JSONDecodeError as e:
-            logger.error(f"❌ Ошибка JSON: {e}")
+
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        docs = []
+        decoder = json.JSONDecoder()
+        idx, n = 0, len(content)
+        while idx < n:
+            while idx < n and content[idx].isspace():
+                idx += 1
+            if idx >= n:
+                break
+            try:
+                obj, end = decoder.raw_decode(content, idx)
+                docs.append(obj)
+                idx = end
+            except json.JSONDecodeError as e:
+                logger.error(f"❌ Обрыв JSON на символе {idx}: {e}")
+                break
+
+        if not docs:
+            logger.error("❌ Не удалось прочитать ни одного JSON-документа!")
             return {"albums": [], "eps": [], "singles": []}
-    
+
+        if len(docs) > 1:
+            logger.warning(f"⚠️ В файле {len(docs)} JSON-документа(ов). Выбираю самый полный.")
+
+        def size(d):
+            if not isinstance(d, dict):
+                return 0
+            return sum(len(d.get(k, [])) for k in ("albums", "eps", "singles"))
+
+        return max(docs, key=size)
+
     def _load_published(self) -> Dict:
-        """Загрузка опубликованных альбомов"""
         try:
             if os.path.exists(self.config["published_file"]):
                 with open(self.config["published_file"], "r", encoding="utf-8") as f:
                     return json.load(f)
-            return {"published_albums": [], "last_publish_time": None}
         except Exception as e:
-            logger.error(f"❌ Ошибка: {e}")
-            return {"published_albums": [], "last_publish_time": None}
-    
+            logger.error(f"❌ Ошибка чтения published: {e}")
+        return {"published_albums": [], "last_publish_time": None}
+
     def _save_published(self):
-        """Сохранение опубликованных альбомов"""
         try:
             with open(self.config["published_file"], "w", encoding="utf-8") as f:
                 json.dump(self.published, f, ensure_ascii=False, indent=2)
+            logger.info("✅ published_albums.json сохранён")
         except Exception as e:
             logger.error(f"❌ Ошибка сохранения: {e}")
-    
+
     # ========================================================
     # VK API
     # ========================================================
-    
+
     def _make_request(self, method: str, params: Dict) -> Dict:
-        """Запрос к VK API"""
-        url = f"{self.base_url}/{method}"
+        if not self.access_token:
+            logger.error("❌ Не задан VK_ACCESS_TOKEN!")
+            return {"success": False, "error": "no token"}
+
+        params = dict(params)
         params["access_token"] = self.access_token
         params["v"] = self.api_version
-        
         try:
-            response = requests.post(url, data=params)
-            response.raise_for_status()
-            result = response.json()
-            
-            if "error" in result:
-                logger.error(f"❌ VK API: {result['error']}")
-                return {"success": False, "error": result["error"]}
-            
-            return {"success": True, "response": result.get("response")}
+            r = requests.post(f"{self.base_url}/{method}", data=params, timeout=30)
+            r.raise_for_status()
+            res = r.json()
+            if "error" in res:
+                logger.error(f"❌ VK API: {res['error']}")
+                return {"success": False, "error": res["error"]}
+            return {"success": True, "response": res.get("response")}
         except requests.RequestException as e:
             logger.error(f"❌ Ошибка запроса: {e}")
             return {"success": False, "error": str(e)}
-    
-    def _format_track_list(self, tracks: List[Dict]) -> str:
-        """Форматирование списка треков"""
-        return "\n".join(f"{i}. {t['title']}" for i, t in enumerate(tracks, 1))
-    
-    def _format_audio_attachments(self, tracks: List[Dict]) -> str:
-        """Форматирование аудио-вложений"""
-        return ",".join(t["audio_id"] for t in tracks if t.get("audio_id"))
-    
-    def _create_post_text(self, release: Dict) -> str:
-        """Создание текста поста"""
+
+    def _post_text(self, release: Dict) -> str:
         artist = self.data.get("metadata", {}).get("artist", "Павел Гнесюк")
-        
         type_names = {"album": "альбом", "ep": "EP", "single": "сингл"}
-        release_type = type_names.get(release.get("type", "album"), "релиз")
-        
         tracks = release.get("tracks", [])
-        artist_tag = artist.replace(" ", "").lower()
-        
+        track_list = "\n".join(f"{i}. {t['title']}" for i, t in enumerate(tracks, 1))
         return self.config["post_template"].format(
             artist=artist,
-            release_type=release_type,
-            album_title=release.get("title", "Без названия"),
+            release_type=type_names.get(release.get("type", "album"), "релиз"),
+            album_title=release.get("title", ""),
             genre=release.get("genre", "разные жанры"),
             track_count=len(tracks),
-            track_list=self._format_track_list(tracks),
-            artist_tag=artist_tag
+            track_list=track_list,
+            artist_tag=artist.replace(" ", "").lower(),
         )
-    
+
     def publish_release(self, release: Dict) -> bool:
-        """Публикация релиза"""
-        title = release.get("title", "Без названия")
-        logger.info(f"📤 Публикация: {title}")
-        
-        try:
-            post_text = self._create_post_text(release)
-            tracks = release.get("tracks", [])
-            audio_attachments = self._format_audio_attachments(tracks)
-            
-            params = {
-                "owner_id": self.owner_id,
-                "message": post_text,
-                "attachments": audio_attachments,
-                "from_group": 1 if self.owner_id < 0 else 0
-            }
-            
-            result = self._make_request("wall.post", params)
-            
-            if result["success"]:
-                post_id = result["response"].get("post_id")
-                logger.info(f"✅ «{title}» опубликован! Пост: {post_id}")
-                
-                self.published["published_albums"].append({
-                    "title": title,
-                    "type": release.get("type"),
-                    "post_id": post_id,
-                    "publish_time": datetime.now().isoformat()
-                })
-                self.published["last_publish_time"] = datetime.now().isoformat()
-                self._save_published()
-                return True
-            
-            logger.error(f"❌ Не удалось опубликовать «{title}»")
-            return False
-        
-        except Exception as e:
-            logger.error(f"❌ Ошибка: {e}")
-            return False
-    
+        title = release.get("title", "")
+        logger.info(f"📤 Публикую: {title}")
+
+        tracks = release.get("tracks", [])
+        attachments = ",".join(t["audio_id"] for t in tracks if t.get("audio_id"))
+
+        result = self._make_request("wall.post", {
+            "owner_id": self.owner_id,
+            "message": self._post_text(release),
+            "attachments": attachments,
+            "from_group": 1 if self.owner_id < 0 else 0,
+        })
+
+        if result["success"]:
+            post_id = result["response"].get("post_id")
+            logger.info(f"✅ «{title}» опубликован! Пост: {post_id}")
+            self.published["published_albums"].append({
+                "title": title,
+                "type": release.get("type"),
+                "post_id": post_id,
+                "publish_time": datetime.now().isoformat(),
+            })
+            self.published["last_publish_time"] = datetime.now().isoformat()
+            self._save_published()
+            return True
+
+        return False
+
     # ========================================================
-    # ОСНОВНАЯ ЛОГИКА
+    # ЛОГИКА
     # ========================================================
-    
+
     def get_unpublished(self) -> List[Dict]:
-        """Неопубликованные релизы"""
-        published_titles = {p["title"] for p in self.published["published_albums"]}
-        unpublished = []
-        
-        for key, rtype in [("albums", "album"), ("eps", "ep"), ("singles", "single")]:
+        done = {p["title"] for p in self.published["published_albums"]}
+        out = []
+        for key, rtype in (("albums", "album"), ("eps", "ep"), ("singles", "single")):
             for item in self.data.get(key, []):
-                if item["title"] not in published_titles:
+                if item.get("title") not in done:
+                    item = dict(item)
                     item["type"] = rtype
-                    unpublished.append(item)
-        
-        return unpublished
-    
+                    out.append(item)
+        return out
+
     def can_publish_now(self) -> bool:
-        """Проверка интервала"""
-        if not self.published["last_publish_time"]:
+        hours = self.config["publish_interval_hours"]
+        if hours <= 0 or not self.published["last_publish_time"]:
             return True
         last = datetime.fromisoformat(self.published["last_publish_time"])
-        return datetime.now() - last >= timedelta(hours=self.config["publish_interval_hours"])
-    
+        return datetime.now() - last >= timedelta(hours=hours)
+
     def run_once(self) -> Dict:
-        """Однократный запуск"""
         logger.info("=" * 50)
-        logger.info("🎵 Запуск агента")
-        
         if not self.can_publish_now():
-            logger.info("⏳ Слишком рано. Пропуск.")
+            logger.info("⏳ Интервал не выдержан — пропуск.")
             return {"success": False, "reason": "interval"}
-        
+
         unpublished = self.get_unpublished()
         if not unpublished:
-            logger.info("🎉 Всё опубликовано!")
-            return {"success": False, "reason": "all_published"}
-        
+            logger.info("🎉 Все релизы уже опубликованы!")
+            return {"success": True, "reason": "all_published"}
+
         release = unpublished[0]
         if self.publish_release(release):
             return {"success": True, "published": release["title"]}
-        return {"success": False, "reason": "failed"}
-    
+        return {"success": False, "reason": "publish_failed"}
+
     def run_continuous(self):
-        """Непрерывный режим"""
-        logger.info("🔄 Непрерывный режим")
+        logger.info("🔄 Непрерывный режим (Ctrl+C для остановки)")
         while True:
             try:
                 self.run_once()
@@ -270,46 +245,37 @@ class MusicAgent:
             except KeyboardInterrupt:
                 logger.info("👋 Остановлено")
                 break
-    
-    def get_stats(self) -> Dict:
-        """Статистика"""
-        total = sum(len(self.data.get(k, [])) for k in ["albums", "eps", "singles"])
-        published = len(self.published["published_albums"])
-        return {
-            "total": total,
-            "published": published,
-            "remaining": total - published,
-            "percent": round(published / total * 100, 1) if total else 0
-        }
-    
+
     def print_stats(self):
-        """Вывод статистики"""
-        s = self.get_stats()
-        print(f"\n📊 Всего: {s['total']} | Опубликовано: {s['published']} | Осталось: {s['remaining']} | Прогресс: {s['percent']}%\n")
+        total = sum(len(self.data.get(k, [])) for k in ("albums", "eps", "singles"))
+        done = len(self.published["published_albums"])
+        pct = round(done / total * 100, 1) if total else 0
+        print(f"\n📊 Всего: {total} | Опубликовано: {done} | Осталось: {total - done} | Прогресс: {pct}%\n")
+
 
 # ============================================================
-# ТОЧКА ВХОДА
+# ТОЧКА ВХОДА (БЕЗ input()!)
 # ============================================================
 
 def main():
     print("\n🎵 МУЗЫКАЛЬНЫЙ АГЕНТ ВКОНТАКТЕ 🎵\n")
-    
     agent = MusicAgent(CONFIG)
-    agent.print_stats()
-    
-    print("1. Опубликовать один релиз")
-    print("2. Непрерывный режим")
-    print("3. Статистика")
-    
-    choice = input("Выбор (1-3): ").strip()
-    
-    if choice == "1":
-        result = agent.run_once()
-        print(f"\n{'✅ ' + result['published'] if result['success'] else 'ℹ️ Пропущено'}")
-    elif choice == "2":
-        agent.run_continuous()
-    elif choice == "3":
+
+    # Режим из аргумента командной строки: publish | stats | continuous
+    mode = sys.argv[1].lower() if len(sys.argv) > 1 else "publish"
+
+    if mode == "stats":
         agent.print_stats()
+    elif mode == "continuous":
+        agent.run_continuous()
+    else:  # по умолчанию — публикация одного релиза (для GitHub Actions)
+        result = agent.run_once()
+        if result.get("success"):
+            print(f"\n✅ Готово: {result.get('published', 'все опубликованы')}")
+        else:
+            print(f"\nℹ️ Пропущено: {result.get('reason')}")
+            sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
