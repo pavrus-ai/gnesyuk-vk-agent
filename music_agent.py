@@ -1,301 +1,315 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import os, json, random, requests, hashlib, io, urllib.parse
-try:
-    from PIL import Image
-    PIL_OK = True
-except Exception:
-    PIL_OK = False
+"""
+Музыкальный агент для автоматической публикации альбомов в ВКонтакте
+Автор: Павел Гнесюк
+Версия: 2.0
+"""
 
-VK_TOKEN = os.getenv("VK_TOKEN", "")
-VK_USER_TOKEN = os.getenv("VK_USER_TOKEN", "")
-VK_GROUP = os.getenv("VK_GROUP_ID", "").strip().lstrip("-")
-GROQ_KEY = os.getenv("GROQ_KEY", "")
-OR_KEY = os.getenv("OPENROUTER_KEY", "")
+import json
+import time
+import logging
+import os
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional
+import requests
 
-MUSIC_FILE = "music.json"
-HISTORY_FILE = "music_history.json"
-POLLINATIONS_API = "https://image.pollinations.ai/prompt/"
-COVERS_BASE = "https://raw.githubusercontent.com/pavrus-ai/gnesyuk-vk-agent/main/covers/"
+# ============================================================
+# КОНФИГУРАЦИЯ
+# ============================================================
 
-# Соответствие альбомов файлам обложек в папке covers/
-COVER_FILES = {
-    "Оставим грусть. С Новым Годом!": "ostavim-grust.jpg",
-    "Горячий песок Египта": "goryachiy-pesok-egipta.jpg",
-    "Дар богов": "dar-bogov.jpg",
-    "Imperium": "imperium.jpg",
-    "Энергия для души": "energiya-dlya-dushi.jpg",
-    "Бездна": "bezdna.jpg",
-    "Тишина вместо слов": "tishina-vmesto-slov.jpg",
-    "Управление чувствами": "upravlenie-chuvstvami.jpg",
-    "Небесный страж": "nebesnyy-strazh.jpg",
-    "Пленники Хроноса": "plenniki-khronosa.jpg",
-    "Поколение ветра": "pokolenie-vetra.jpg",
-    "Туманные зеркала": "tumannye-zerkala.jpg",
-    "Раскаленный мир": "raskalennyy-mir.jpg",
-    "Обжигающий": "obzhigayushchiy.jpg",
-    "Лекарство от печали": "lekarstvo-ot-pechali.jpg",
-    "Пока ты ждёшь": "poka-ty-zhdesh.jpg",
-    "Весенние чувства": "vesennie-chuvstva.jpg",
-    "Тени Великой Тартарии": "teni-velikoy-tartarii.jpg",
-    "Spirit": "spirit.jpg",
-    "Enjoyments": "enjoyments.jpg",
-    "Турецкие мотивы": "turetskie-motivy.jpg",
-    "Прикосновения": "prikosnoveniya.jpg",
-    "Истоки славы": "istoki-slavy.jpg",
-    "Цена тишины": "tsena-tishiny.jpg",
-    "Под одним небом": "pod-odnim-nebom.jpg",
-    "Дух свободы": "dukh-svobody.jpg",
-    "Gloria Romae": "gloria-romae.jpg",
-    "Gloria Romae II": "gloria-romae-2.jpg",
-    "Сибирский ветер": "sibirskiy-veter.jpg",
-    "Чувственный горизонт": "chuvstvennyy-gorizont.jpg",
-    "Твой свет": "tvoy-svet.jpg",
-    "Дух возвращается": "dukh-vozvrashchaetsya.jpg",
-    "Энергия существует": "energiya-sushchestvuet.jpg",
-    "Тёплый свет": "tyoplyy-svet.jpg",
-    "Россия матушка зовет (folk garmonica)": "rossiya-matushka-zovet.jpg",
-    "Шторм и штиль": "shtorm-i-shtil.jpg"
+CONFIG = {
+    # Токен доступа ВКонтакте
+    "vk_access_token": "ВАШ_ТОКЕН_ВК",
+    
+    # Идентификатор группы или страницы для публикации
+    "owner_id": -2001000000,
+    
+    # Файл с данными о музыке
+    "data_file": "music.json",
+    
+    # Настройки публикации
+    "publish_interval_hours": 24,
+    "max_albums_per_day": 1,
+    
+    # Шаблон поста
+    "post_template": """🎵 {artist} представляет {release_type} «{album_title}»!
+
+🎼 Жанр: {genre}
+📀 Треков: {track_count}
+
+{track_list}
+
+🎧 Слушайте прямо сейчас!
+
+#музыка #альбом #новинка #{artist_tag}""",
+    
+    # Логирование
+    "log_file": "music_agent.log",
+    "log_level": "INFO",
+    
+    # Файл для отслеживания опубликованных альбомов
+    "published_file": "published_albums.json"
 }
 
-def log(msg):
-    print(msg, flush=True)
+# ============================================================
+# ЛОГИРОВАНИЕ
+# ============================================================
 
-log("Версия ℹ️ music-agent v5 (music.json + covers/ + генерация 1:1)")
-
-def _extract(r):
-    try: return r["choices"][0]["message"]["content"].strip()
-    except Exception: return None
-
-def ai_call(prompt):
-    models = [
-        ("groq", "llama-3.3-70b-versatile", GROQ_KEY),
-        ("openrouter", "meta-llama/llama-3.3-70b-instruct:free", OR_KEY),
-        ("openrouter", "google/gemma-3-27b-it:free", OR_KEY),
-        ("openrouter", "auto", OR_KEY)
+logging.basicConfig(
+    level=getattr(logging, CONFIG["log_level"]),
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.FileHandler(CONFIG["log_file"], encoding="utf-8"),
+        logging.StreamHandler()
     ]
-    for provider, model, key in models:
-        if not key: continue
-        try:
-            url = "https://api.groq.com/openai/v1/chat/completions" if provider == "groq" else "https://openrouter.ai/api/v1/chat/completions"
-            headers = {"Authorization": f"Bearer {key}"}
-            if provider == "openrouter": headers["HTTP-Referer"] = "https://github.com"
-            r = requests.post(url, headers=headers, json={
-                "model": model, "temperature": 0.8, "max_tokens": 800,
-                "messages": [{"role": "user", "content": prompt + "\n\nВАЖНО: Пиши ТОЛЬКО на русском языке."}]
-            }, timeout=45).json()
-            if "error" not in r and "choices" in r:
-                text = _extract(r)
-                if text and 300 <= len(text) <= 750:
-                    log(f"✅ Текст: {provider} ({model}), {len(text)} симв.")
-                    return text
-        except Exception:
-            continue
-    return None
+)
+logger = logging.getLogger(__name__)
 
-def generate_text(track, album):
-    coauthors = album.get("coauthors", [])
-    co_text = f"Учти коллаборацию с {', '.join(coauthors)}. " if coauthors else ""
-    song_info = track.get("about", "") or f"название «{track['title']}»"
-    prompt = (
-        f"Напиши пост о песне Павла Гнесюка для группы ВКонтакте.\n\n"
-        f"ПЕСНЯ: «{track['title']}»\n"
-        f"О ПЕСНЕ: {song_info}\n"
-        f"АЛЬБОМ: «{album['title']}» ({album.get('type', 'альбом')}, {album.get('genre', '')}, {album.get('year', '')})\n"
-        f"ОБ АЛЬБОМЕ: {album.get('about', '')}\n"
-        f"СОАВТОРЫ: {', '.join(coauthors) if coauthors else 'сольно'}\n\n"
-        f"ТРЕБОВАНИЯ:\n"
-        f"1. ТОЛЬКО русский язык.\n"
-        f"2. Длина СТРОГО 350-650 символов.\n"
-        f"3. Начни с описания песни: о чём она, настроение, атмосфера. {co_text}\n"
-        f"4. Добавь 1-2 предложения про смысл и атмосферу альбома.\n"
-        f"5. В конце обязательно: 🎧 Слушать: {album['url']}\n"
-        f"6. Стиль живой, искренний, без пафоса.\n"
-        f"7. Хэштеги только: #ПавелГнесюк #музыка"
-    )
-    text = ai_call(prompt)
-    if not text:
-        log("⚠️ ИИ недоступен — шаблонный текст")
-        text = (f"🎵 «{track['title']}» — трек из альбома «{album['title']}».\n\n"
-                f"{album.get('about', '')}\n\n"
-                f"🎧 Слушать: {album['url']}\n\n#ПавелГнесюк #музыка")
-    return text
+# ============================================================
+# КЛАСС АГЕНТА
+# ============================================================
 
-def get_cover(album, track):
-    # 1. Ссылка из music.json
-    url = album.get("cover", "")
-    if url:
-        try:
-            r = requests.get(url, timeout=30)
-            if r.headers.get("content-type", "").startswith("image") and len(r.content) > 1000:
-                log(f"✅ Обложка по ссылке: {len(r.content)} байт")
-                return r.content
-        except Exception as e:
-            log(f"⚠️ Обложка по ссылке не скачалась: {e}")
-    # 2. Файл из папки covers/ репозитория
-    fname = COVER_FILES.get(album.get("title", ""), "")
-    if fname:
-        try:
-            r = requests.get(COVERS_BASE + fname, timeout=30)
-            if r.status_code == 200 and len(r.content) > 1000:
-                log(f"✅ Обложка из covers/: {fname}")
-                return r.content
-        except Exception:
-            pass
-    # 3. Генерация квадратной обложки 1:1
-    log("🎨 Генерирую квадратную обложку (1:1)...")
-    coauthors = f", feat. {', '.join(album.get('coauthors', []))}" if album.get("coauthors") else ""
-    p = (f"Square album artwork for {album.get('genre', 'rock')} music '{track['title']}' by Pavel Gnesyuk{coauthors}, "
-         f"mood: {album.get('about', '')[:120]}, bright vivid colors, beautiful composition, "
-         f"no text, no letters, no words")
-    seed = random.randint(1, 999999)
-    u = POLLINATIONS_API + urllib.parse.quote(p) + f"?nologo=true&seed={seed}&model=flux&width=1024&height=1024"
-    try:
-        r = requests.get(u, timeout=240)
-        if r.headers.get("content-type", "").startswith("image"):
-            log(f"✅ Сгенерированная обложка: {len(r.content)} байт")
-            return r.content
-    except Exception as e:
-        log(f"⚠️ Ошибка генерации обложки: {e}")
-    return b""
-
-def vk_call(method, params=None, token=None):
-    p = dict(params or {})
-    p["access_token"] = token or VK_TOKEN
-    p["v"] = "5.131"
-    try:
-        r = requests.post("https://api.vk.com/method/" + method, data=p, timeout=30).json()
-    except Exception as e:
-        log(f"⚠️ VK {method}: {e}")
-        return None
-    if "error" in r:
-        log(f"⚠️ VK {method}: {str(r.get('error'))[:150]}")
-        return None
-    return r.get("response")
-
-def vk_upload_photo(img_bytes):
-    tok = VK_USER_TOKEN or VK_TOKEN
-    if not tok:
-        log("⚠️ Нет токена для фото")
-        return None
-    if PIL_OK:
-        try:
-            im = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-            buf = io.BytesIO()
-            im.save(buf, "JPEG", quality=92)
-            img_bytes = buf.getvalue()
-        except Exception as e:
-            log(f"⚠️ JPEG: {e}")
+class MusicAgent:
+    """Агент для автоматической публикации музыки в ВКонтакте"""
     
-    srv = vk_call("photos.getWallUploadServer", {"group_id": VK_GROUP}, token=tok)
-    if not srv or not srv.get("upload_url"):
-        log(f"⚠️ upload_url: {srv}")
-        return None
+    def __init__(self, config: Dict):
+        self.config = config
+        self.access_token = config["vk_access_token"]
+        self.owner_id = config["owner_id"]
+        self.api_version = "5.131"
+        self.base_url = "https://api.vk.com/method"
+        
+        self.data = self._load_data()
+        self.published = self._load_published()
+        
+        logger.info("🚀 Музыкальный агент инициализирован")
+        logger.info(f"📊 Альбомов: {len(self.data.get('albums', []))}")
+        logger.info(f"📊 EP: {len(self.data.get('eps', []))}")
+        logger.info(f"📊 Синглов: {len(self.data.get('singles', []))}")
     
-    try:
-        r = requests.post(srv["upload_url"],
-            files={"photo": ("cover.jpg", img_bytes, "image/jpeg")}, timeout=120).json()
+    # ========================================================
+    # РАБОТА С ФАЙЛАМИ
+    # ========================================================
+    
+    def _load_data(self) -> Dict:
+        """Загрузка данных о музыке"""
+        try:
+            with open(self.config["data_file"], "r", encoding="utf-8") as f:
+                data = json.load(f)
+            logger.info(f"✅ Данные загружены из {self.config['data_file']}")
+            return data
+        except FileNotFoundError:
+            logger.error(f"❌ Файл {self.config['data_file']} не найден!")
+            return {"albums": [], "eps": [], "singles": []}
+        except json.JSONDecodeError as e:
+            logger.error(f"❌ Ошибка JSON: {e}")
+            return {"albums": [], "eps": [], "singles": []}
+    
+    def _load_published(self) -> Dict:
+        """Загрузка опубликованных альбомов"""
+        try:
+            if os.path.exists(self.config["published_file"]):
+                with open(self.config["published_file"], "r", encoding="utf-8") as f:
+                    return json.load(f)
+            return {"published_albums": [], "last_publish_time": None}
+        except Exception as e:
+            logger.error(f"❌ Ошибка: {e}")
+            return {"published_albums": [], "last_publish_time": None}
+    
+    def _save_published(self):
+        """Сохранение опубликованных альбомов"""
+        try:
+            with open(self.config["published_file"], "w", encoding="utf-8") as f:
+                json.dump(self.published, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.error(f"❌ Ошибка сохранения: {e}")
+    
+    # ========================================================
+    # VK API
+    # ========================================================
+    
+    def _make_request(self, method: str, params: Dict) -> Dict:
+        """Запрос к VK API"""
+        url = f"{self.base_url}/{method}"
+        params["access_token"] = self.access_token
+        params["v"] = self.api_version
         
-        photo_data = r.get("photo", "")
-        if not photo_data or photo_data == "[]":
-            log(f"⚠️ VK вернул пустой photo: {str(r)[:200]}")
-            return None
+        try:
+            response = requests.post(url, data=params)
+            response.raise_for_status()
+            result = response.json()
+            
+            if "error" in result:
+                logger.error(f"❌ VK API: {result['error']}")
+                return {"success": False, "error": result["error"]}
+            
+            return {"success": True, "response": result.get("response")}
+        except requests.RequestException as e:
+            logger.error(f"❌ Ошибка запроса: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def _format_track_list(self, tracks: List[Dict]) -> str:
+        """Форматирование списка треков"""
+        return "\n".join(f"{i}. {t['title']}" for i, t in enumerate(tracks, 1))
+    
+    def _format_audio_attachments(self, tracks: List[Dict]) -> str:
+        """Форматирование аудио-вложений"""
+        return ",".join(t["audio_id"] for t in tracks if t.get("audio_id"))
+    
+    def _create_post_text(self, release: Dict) -> str:
+        """Создание текста поста"""
+        artist = self.data.get("metadata", {}).get("artist", "Павел Гнесюк")
         
-        saved = vk_call("photos.saveWallPhoto",
-            {"photo": photo_data, "server": r.get("server"),
-             "hash": r.get("hash"), "group_id": VK_GROUP}, token=tok)
+        type_names = {"album": "альбом", "ep": "EP", "single": "сингл"}
+        release_type = type_names.get(release.get("type", "album"), "релиз")
         
-        if saved and len(saved) > 0:
-            p = saved[0]
-            acc = p.get("access_key", "")
-            att = f"photo{p['owner_id']}_{p['id']}"
-            if acc: att += f"_{acc}"
-            log(f"✅ ВК: картинка загружена → {att}")
-            return att
-    except Exception as e:
-        log(f"⚠️ VK upload: {e}")
-    return None
+        tracks = release.get("tracks", [])
+        artist_tag = artist.replace(" ", "").lower()
+        
+        return self.config["post_template"].format(
+            artist=artist,
+            release_type=release_type,
+            album_title=release.get("title", "Без названия"),
+            genre=release.get("genre", "разные жанры"),
+            track_count=len(tracks),
+            track_list=self._format_track_list(tracks),
+            artist_tag=artist_tag
+        )
+    
+    def publish_release(self, release: Dict) -> bool:
+        """Публикация релиза"""
+        title = release.get("title", "Без названия")
+        logger.info(f"📤 Публикация: {title}")
+        
+        try:
+            post_text = self._create_post_text(release)
+            tracks = release.get("tracks", [])
+            audio_attachments = self._format_audio_attachments(tracks)
+            
+            params = {
+                "owner_id": self.owner_id,
+                "message": post_text,
+                "attachments": audio_attachments,
+                "from_group": 1 if self.owner_id < 0 else 0
+            }
+            
+            result = self._make_request("wall.post", params)
+            
+            if result["success"]:
+                post_id = result["response"].get("post_id")
+                logger.info(f"✅ «{title}» опубликован! Пост: {post_id}")
+                
+                self.published["published_albums"].append({
+                    "title": title,
+                    "type": release.get("type"),
+                    "post_id": post_id,
+                    "publish_time": datetime.now().isoformat()
+                })
+                self.published["last_publish_time"] = datetime.now().isoformat()
+                self._save_published()
+                return True
+            
+            logger.error(f"❌ Не удалось опубликовать «{title}»")
+            return False
+        
+        except Exception as e:
+            logger.error(f"❌ Ошибка: {e}")
+            return False
+    
+    # ========================================================
+    # ОСНОВНАЯ ЛОГИКА
+    # ========================================================
+    
+    def get_unpublished(self) -> List[Dict]:
+        """Неопубликованные релизы"""
+        published_titles = {p["title"] for p in self.published["published_albums"]}
+        unpublished = []
+        
+        for key, rtype in [("albums", "album"), ("eps", "ep"), ("singles", "single")]:
+            for item in self.data.get(key, []):
+                if item["title"] not in published_titles:
+                    item["type"] = rtype
+                    unpublished.append(item)
+        
+        return unpublished
+    
+    def can_publish_now(self) -> bool:
+        """Проверка интервала"""
+        if not self.published["last_publish_time"]:
+            return True
+        last = datetime.fromisoformat(self.published["last_publish_time"])
+        return datetime.now() - last >= timedelta(hours=self.config["publish_interval_hours"])
+    
+    def run_once(self) -> Dict:
+        """Однократный запуск"""
+        logger.info("=" * 50)
+        logger.info("🎵 Запуск агента")
+        
+        if not self.can_publish_now():
+            logger.info("⏳ Слишком рано. Пропуск.")
+            return {"success": False, "reason": "interval"}
+        
+        unpublished = self.get_unpublished()
+        if not unpublished:
+            logger.info("🎉 Всё опубликовано!")
+            return {"success": False, "reason": "all_published"}
+        
+        release = unpublished[0]
+        if self.publish_release(release):
+            return {"success": True, "published": release["title"]}
+        return {"success": False, "reason": "failed"}
+    
+    def run_continuous(self):
+        """Непрерывный режим"""
+        logger.info("🔄 Непрерывный режим")
+        while True:
+            try:
+                self.run_once()
+                time.sleep(3600)
+            except KeyboardInterrupt:
+                logger.info("👋 Остановлено")
+                break
+    
+    def get_stats(self) -> Dict:
+        """Статистика"""
+        total = sum(len(self.data.get(k, [])) for k in ["albums", "eps", "singles"])
+        published = len(self.published["published_albums"])
+        return {
+            "total": total,
+            "published": published,
+            "remaining": total - published,
+            "percent": round(published / total * 100, 1) if total else 0
+        }
+    
+    def print_stats(self):
+        """Вывод статистики"""
+        s = self.get_stats()
+        print(f"\n📊 Всего: {s['total']} | Опубликовано: {s['published']} | Осталось: {s['remaining']} | Прогресс: {s['percent']}%\n")
 
-def vk_post(message, attachment=None):
-    params = {"owner_id": "-" + VK_GROUP, "message": message, "from_group": 1}
-    if attachment:
-        params["attachments"] = attachment
-    res = vk_call("wall.post", params)
-    if res:
-        log(f"✅ ВК: пост опубликован: https://vk.com/wall-{VK_GROUP}_{res.get('post_id')}")
-        return True
-    return False
-
-def load_albums():
-    raw = open(MUSIC_FILE, encoding="utf-8").read().strip()
-    try:
-        return json.loads(raw)["albums"]
-    except Exception:
-        log("⚠️ music.json из двух частей — склеиваю автоматически")
-        dec = json.JSONDecoder()
-        data1, end1 = dec.raw_decode(raw)
-        albums = data1["albums"]
-        rest = raw[end1:].strip()
-        if rest:
-            if rest.startswith("}"):
-                rest = rest[1:]
-            if rest.startswith(","):
-                rest = rest[1:]
-            data2 = json.loads('{"albums":[' + rest)
-            albums += data2["albums"]
-        log(f"✅ Склеено: всего альбомов {len(albums)}")
-        return albums
+# ============================================================
+# ТОЧКА ВХОДА
+# ============================================================
 
 def main():
-    try:
-        albums = load_albums()
-    except Exception as e:
-        log(f"❌ Ошибка чтения music.json: {e}")
-        return
-
-    try:
-        hist = set(json.load(open(HISTORY_FILE, encoding="utf-8"))) if os.path.exists(HISTORY_FILE) else set()
-    except Exception:
-        hist = set()
-
-    pairs = [(a, s) for a in albums for s in a["songs"] if f"{a['title']}||{s['title']}" not in hist]
-    if not pairs:
-        log("🔄 Вся история пройдена — начинаю заново")
-        hist.clear()
-        pairs = [(a, s) for a in albums for s in a["songs"]]
-
-    album, track = random.choice(pairs)
-    log(f"🎵 Альбом: «{album['title']}» ({album.get('genre', '')}, {album.get('year', '')})")
-    log(f"🎶 Трек: «{track['title']}»")
-    if album.get("coauthors"):
-        log(f"👥 Соавторы: {', '.join(album['coauthors'])}")
-
-    text = generate_text(track, album)
-    cover = get_cover(album, track)
-
-    if cover:
-        os.makedirs("img", exist_ok=True)
-        slug = hashlib.md5(f"{album['title']}-{track['title']}".encode()).hexdigest()[:8]
-        with open(f"img/music_{slug}.jpg", "wb") as f:
-            f.write(cover)
-        log(f"💾 Сохранено локально: img/music_{slug}.jpg")
-        att = vk_upload_photo(cover)
-        if att:
-            vk_post(text, att)
-        else:
-            log("⚠️ Фото не загрузилось — пост без картинки")
-            vk_post(text)
-    else:
-        vk_post(text)
-
-    hist.add(f"{album['title']}||{track['title']}")
-    json.dump(list(hist), open(HISTORY_FILE, "w", encoding="utf-8"), ensure_ascii=False)
-
-    log("=" * 50)
-    log("✅ FINISH: пост о музыке опубликован в ВК!")
+    print("\n🎵 МУЗЫКАЛЬНЫЙ АГЕНТ ВКОНТАКТЕ 🎵\n")
+    
+    agent = MusicAgent(CONFIG)
+    agent.print_stats()
+    
+    print("1. Опубликовать один релиз")
+    print("2. Непрерывный режим")
+    print("3. Статистика")
+    
+    choice = input("Выбор (1-3): ").strip()
+    
+    if choice == "1":
+        result = agent.run_once()
+        print(f"\n{'✅ ' + result['published'] if result['success'] else 'ℹ️ Пропущено'}")
+    elif choice == "2":
+        agent.run_continuous()
+    elif choice == "3":
+        agent.print_stats()
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        log(f"❌ КРИТИЧЕСКАЯ ОШИБКА: {e}")
-        raise
+    main()
