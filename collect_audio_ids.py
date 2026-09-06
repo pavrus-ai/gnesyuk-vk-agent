@@ -56,7 +56,7 @@ def vk_call(method, params):
         r = requests.post(f"https://api.vk.com/method/{method}", data=p, timeout=30).json()
         if "error" in r:
             print(f"⚠️ {method}: {r.get('error')}")
-            return None
+            return []
         return r.get("response", {}).get("items", [])
     except Exception as e:
         print(f"⚠️ {method}: {e}")
