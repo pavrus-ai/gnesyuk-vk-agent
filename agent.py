@@ -1,9 +1,6 @@
 # -*- coding: utf-8 -*-
-import os, json, datetime, requests, time, io, hashlib
-from email.utils import formatdate
+import os, json, datetime, requests, time, io
 from PIL import Image
-import urllib3
-urllib3.disable_warnings()
 
 GROQ_KEY = os.environ.get("GROQ_KEY", "")
 OR_KEY   = os.environ.get("OPENROUTER_KEY", "")
@@ -19,7 +16,7 @@ RU = "\n\nВАЖНО: Пиши ТОЛЬКО на русском языке."
 def log(msg):
     print(msg, flush=True)
 
-log("Версия ℹ️ vk-agent v3 (с конвертацией JPEG + сохранение локально)")
+log("Версия ℹ️ vk-agent v3 (JPEG-конвертация + сохранение локально)")
 
 def _extract(r):
     try: return r["choices"][0]["message"]["content"].strip()
@@ -113,7 +110,7 @@ def build_vk_post(book):
               f"4. Закончи вопросом или крючком.")
     txt = ai_text(prompt, minlen=300)
     if not txt:
-        log("️ Пост не создан — стандартный текст.")
+        log("⚠️ Пост не создан — стандартный текст.")
         txt = (f"РОМАН «{t.upper()}»: ИСТОРИЯ, КОТОРАЯ ЗАТЯГИВАЕТ\n\n{a}")
     return clean_txt(txt)
 
@@ -143,49 +140,60 @@ def vk_call(method, params=None, token=None):
         return None
     return r.get("response")
 
+def convert_to_jpeg(img_bytes):
+    """Конвертирует любое изображение в чистый JPEG"""
+    try:
+        im = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        buf = io.BytesIO()
+        im.save(buf, "JPEG", quality=92)
+        result = buf.getvalue()
+        log(f"✅ Конвертировано в JPEG: {len(result)} байт (было {len(img_bytes)})")
+        return result
+    except Exception as e:
+        log(f"⚠️ Ошибка конвертации JPEG: {e}")
+        return img_bytes
+
 def vk_upload_photo(img_bytes):
-    """Надёжная загрузка фото на стену группы ВК"""
+    """Надёжная загрузка фото на стену группы ВК с JPEG-конвертацией"""
     tok = VK_USER_TOKEN or VK_TOKEN
     if not tok:
         log("⚠️ Нет токена для загрузки фото")
         return None
     
-    log(f"📤 Загрузка фото в ВК ({len(img_bytes)} байт)...")
+    # 1. Конвертируем в JPEG (ВК требует именно JPEG!)
+    img_bytes = convert_to_jpeg(img_bytes)
     
-    # 1. Получаем URL для загрузки на стену
+    # 2. Сохраняем локально (для git)
+    os.makedirs("img", exist_ok=True)
+    day = datetime.date.today().toordinal()
+    local_path = f"img/vk_{day}.jpg"
+    with open(local_path, "wb") as f:
+        f.write(img_bytes)
+    log(f"💾 Сохранено локально: {local_path}")
+    
+    # 3. Получаем URL загрузки на стену
     srv = vk_call("photos.getWallUploadServer", {"group_id": VK_GROUP_ID}, token=tok)
     if not srv or "upload_url" not in srv:
         log(f"⚠️ Не получен upload_url: {srv}")
         return None
     
-    log(f"✅ Получен upload_url")
-    
-    # 2. Загружаем файл
+    # 4. Загружаем файл
     try:
         r = requests.post(srv["upload_url"],
-            files={"photo": ("cover.jpg", img_bytes, "image/jpeg")}, 
-            timeout=120).json()
+            files={"photo": ("cover.jpg", img_bytes, "image/jpeg")}, timeout=120).json()
         
         log(f"📥 Ответ upload_url: {str(r)[:200]}")
         
-        # Проверяем, что вернулись нужные поля
         if "photo" not in r or "server" not in r or "hash" not in r:
-            log(f"⚠️ Нет photo/server/hash в ответе: {r}")
+            log(f"⚠️ Нет photo/server/hash: {str(r)[:200]}")
             return None
         
-        log(f"✅ Файл загружен, photo={str(r['photo'])[:50]}...")
-        
-        # 3. Сохраняем фото
+        # 5. Сохраняем фото в ВК
         saved = vk_call("photos.saveWallPhoto",
-            {
-                "photo": r["photo"], 
-                "server": r["server"],
-                "hash": r["hash"], 
-                "group_id": VK_GROUP_ID
-            }, 
-            token=tok)
+            {"photo": r["photo"], "server": r["server"],
+             "hash": r["hash"], "group_id": VK_GROUP_ID}, token=tok)
         
-        log(f"📥 Ответ saveWallPhoto: {saved}")
+        log(f"📥 Ответ saveWallPhoto: {str(saved)[:200]}")
         
         if saved and len(saved) > 0:
             p = saved[0]
@@ -194,7 +202,7 @@ def vk_upload_photo(img_bytes):
             acc = p.get("access_key", "")
             
             if not owner_id or not photo_id:
-                log(f"⚠️ Нет owner_id или id в ответе: {p}")
+                log(f"⚠️ Нет owner_id или id: {p}")
                 return None
             
             attachment = f"photo{owner_id}_{photo_id}"
@@ -204,13 +212,11 @@ def vk_upload_photo(img_bytes):
             log(f"✅ ВК: картинка загружена → {attachment}")
             return attachment
         
-        log(f"️ saveWallPhoto вернул пустой/неверный ответ: {saved}")
+        log(f"⚠️ saveWallPhoto вернул пустой ответ: {saved}")
         return None
         
     except Exception as e:
-        log(f"⚠️ VK upload error: {e}")
-        import traceback
-        log(traceback.format_exc())
+        log(f"⚠️ VK upload: {e}")
         return None
 
 def vk_post_wall(text, attachment=None):
@@ -224,7 +230,7 @@ def vk_post_wall(text, attachment=None):
 
 def main():
     if not VK_TOKEN or not VK_GROUP_ID:
-        log("️ Нет VK_TOKEN/VK_GROUP_ID — пропуск ВК")
+        log("⚠️ Нет VK_TOKEN/VK_GROUP_ID — пропуск ВК")
         return
     
     books = json.load(open("books.json", encoding="utf-8"))["books"]
@@ -271,5 +277,5 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        log(f" КРИТИЧЕСКАЯ ОШИБКА: {e}")
+        log(f"❌ КРИТИЧЕСКАЯ ОШИБКА: {e}")
         raise
