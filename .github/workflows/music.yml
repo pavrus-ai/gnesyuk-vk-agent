@@ -23,11 +23,11 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
-      - name: Run music agent
+- name: Run music agent
         run: python music_agent.py
         env:
-          VK_ACCESS_TOKEN: ${{ secrets.VK_ACCESS_TOKEN }}
-          VK_OWNER_ID: ${{ secrets.VK_OWNER_ID }}
+          VK_ACCESS_TOKEN: ${{ secrets.VK_TOKEN }}
+          VK_OWNER_ID: ${{ secrets.VK_GROUP_ID }}
 
       - name: Commit published_albums.json
         run: |
