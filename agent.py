@@ -19,7 +19,7 @@ MIN_BRIGHTNESS = 100
 def log(msg):
     print(msg, flush=True)
 
-log("Версия ℹ️ vk-agent v5 (яркие сцены без людей + контроль яркости)")
+log("Версия ℹ️ vk-agent v6 (чистый лог: group_id первым, без DeprecationWarning)")
 
 def _extract(r):
     try: return r["choices"][0]["message"]["content"].strip()
@@ -160,13 +160,13 @@ def convert_to_jpeg(img_bytes):
         return img_bytes
 
 def image_stats(img_bytes):
-    """(валидность, средняя яркость 0..255)"""
+    """(валидность, средняя яркость 0..255). Без устаревшего getdata()."""
     try:
         im = Image.open(io.BytesIO(img_bytes))
         im.verify()
         im = Image.open(io.BytesIO(img_bytes)).convert("L")
         im.thumbnail((64, 64))
-        px = list(im.getdata())
+        px = im.tobytes()   # байты = значения пикселей 0..255 для режима "L"
         return True, sum(px) / len(px)
     except Exception:
         return False, 0.0
@@ -199,7 +199,8 @@ def download_image(scene_text, seed):
         return None
 
 def vk_upload_photo(img_bytes):
-    """Загрузка фото на стену группы: сначала owner_id (рабочий вариант), group_id — запасной."""
+    """Загрузка фото на стену группы.
+    v6: сначала group_id (доказанно рабочий в v5), owner_id — запасной."""
     tok = VK_USER_TOKEN or VK_TOKEN
     if not tok:
         log("⚠️ Нет токена для загрузки фото")
@@ -215,8 +216,8 @@ def vk_upload_photo(img_bytes):
     log(f"💾 Сохранено локально: {local_path}")
 
     variants = (
-        {"owner_id": "-" + VK_GROUP_ID},
-        {"group_id": VK_GROUP_ID},
+        {"group_id": VK_GROUP_ID},        # доказанно рабочий в v5
+        {"owner_id": "-" + VK_GROUP_ID},  # запасной
     )
     for params in variants:
         srv = vk_call("photos.getWallUploadServer", params, token=tok)
