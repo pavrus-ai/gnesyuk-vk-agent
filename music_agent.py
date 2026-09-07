@@ -2,12 +2,12 @@
 # -*- coding: utf-8 -*-
 """
 Музыкальный агент для публикации музыки в ВКонтакте
-Версия 3.11:
+Версия 3.12:
   - пост = ОБЛОЖКА АЛЬБОМА из папки covers/ + ОДИН случайный трек с плеером
-  - НОВОЕ: загрузка обложек ПОЛЬЗОВАТЕЛЬСКИМ токеном (VK_PHOTOS_TOKEN),
-    т.к. групповым токеном photos.getWallUploadServer недоступен (ошибка 27);
-    два пути: на стену группы -> запасной в "Сохранённые фотографии"
-  - пост публикуется групповым токеном от имени группы
+  - ИСПРАВЛЕНО: файл обложки отправляется в поле "photo" (требование ВК
+    для photos.getWallUploadServer), раньше было "file" -> "photo is undefined"
+  - загрузка обложек пользовательским токеном (VK_PHOTOS_TOKEN),
+    пост — групповым от имени группы
   - обложка загружается один раз на альбом, ID кэшируется в covers_cache.json
   - вечная случайная ротация, 1 пост в день
 """
@@ -251,10 +251,14 @@ class MusicAgent:
             return None
         return path
 
-    def _upload_via(self, server_method: str, server_params: Dict,
-                    save_method: str, save_params: Dict, path: str) -> Optional[str]:
-        """Общая схема: получить сервер -> загрузить файл -> сохранить -> photo..."""
-        srv = self._make_request(server_method, server_params, token=self.photos_token)
+    def _upload_cover(self, path: str) -> Optional[str]:
+        """Загрузка обложки на стену группы пользовательским токеном.
+        ВАЖНО: multipart-поле должно называться "photo" (не "file")."""
+        srv = self._make_request(
+            "photos.getWallUploadServer",
+            {"owner_id": self.owner_id},
+            token=self.photos_token,
+        )
         if not srv["success"]:
             return None
 
@@ -262,7 +266,7 @@ class MusicAgent:
             with open(path, "rb") as f:
                 resp = requests.post(
                     srv["response"]["upload_url"],
-                    files={"file": (os.path.basename(path), f, "image/jpeg")},
+                    files={"photo": (os.path.basename(path), f, "image/jpeg")},
                     timeout=60,
                 )
             data = resp.json()
@@ -270,41 +274,28 @@ class MusicAgent:
             logger.error(f"❌ Ошибка загрузки файла обложки: {e}")
             return None
 
-        if not data.get("photo") and not data.get("hash"):
-            logger.error(f"❌ ВК не принял файл обложки: {data}")
+        if not data.get("photo"):
+            logger.error(f"❌ ВК не принял файл обложки (поле photo пустое): {data}")
             return None
 
-        params = dict(save_params)
-        params["photo"] = data.get("photo", "")
-        params["hash"] = data.get("hash", "")
-        params["server"] = data.get("server", "")
-        save = self._make_request(save_method, params, token=self.photos_token)
+        save = self._make_request(
+            "photos.saveWallPhoto",
+            {
+                "owner_id": self.owner_id,
+                "photo": data["photo"],
+                "hash": data.get("hash", ""),
+                "server": data.get("server", ""),
+            },
+            token=self.photos_token,
+        )
         if not save["success"]:
             return None
 
-        items = save["response"]
-        item = items[0] if isinstance(items, list) else items
+        item = save["response"][0]
         att = f"photo{item['owner_id']}_{item['id']}"
         if item.get("access_key"):
             att += f"_{item['access_key']}"
         return att
-
-    def _upload_cover(self, path: str) -> Optional[str]:
-        """Путь 1: на стену группы. Путь 2 (запасной): в 'Сохранённые фотографии'."""
-        att = self._upload_via(
-            "photos.getWallUploadServer", {"owner_id": self.owner_id},
-            "photos.saveWallPhoto", {"owner_id": self.owner_id},
-            path,
-        )
-        if att:
-            return att
-
-        logger.warning("⚠️ Загрузка на стену не удалась — пробую 'Сохранённые фотографии'")
-        return self._upload_via(
-            "photos.getUploadServer", {"album_id": "saved"},
-            "photos.save", {},
-            path,
-        )
 
     def _get_album_photo(self, album_title: str) -> Optional[str]:
         """Вложение photo... для альбома: из кэша или загрузка из covers/."""
