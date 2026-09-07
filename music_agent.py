@@ -2,10 +2,11 @@
 # -*- coding: utf-8 -*-
 """
 Музыкальный агент для публикации альбомов в ВКонтакте
-Версия 3.1 — для GitHub Actions:
+Версия 3.2 — для GitHub Actions:
   - без input() (режим через аргументы командной строки)
   - устойчив к "склеенному" JSON в music.json
   - безопасное чтение секретов (не падает на пустых значениях)
+  - нормализация ID группы (любой формат записи -> с минусом)
 """
 
 import json
@@ -28,12 +29,24 @@ def _parse_int(raw):
     return int(raw) if raw.lstrip("-").isdigit() else 0
 
 
+def _normalize_owner(raw_id: int) -> int:
+    """Приводит ID группы к виду с минусом, убирая смещение 2000000000.
+    Примеры: 1389112 -> -1389112 | -1389112 -> -1389112 | 2001389112 -> -1389112"""
+    if raw_id == 0:
+        return 0
+    aid = abs(raw_id)
+    if aid >= 2000000000:   # сохранено со смещением: 2001389112
+        aid -= 2000000000   # -> 1389112
+    return -aid             # публикация от имени группы = с минусом
+
+
 # ============================================================
 # КОНФИГУРАЦИЯ
 # ============================================================
 
 CONFIG = {
     # Секреты из GitHub: Settings → Secrets and variables → Actions
+    # (в music.yml они проброшены через env из secrets.VK_TOKEN и secrets.VK_GROUP_ID)
     "vk_access_token": (os.environ.get("VK_ACCESS_TOKEN") or "").strip(),
     "owner_id": _parse_int(os.environ.get("VK_OWNER_ID")),
 
@@ -73,7 +86,7 @@ class MusicAgent:
     def __init__(self, config: Dict):
         self.config = config
         self.access_token = config["vk_access_token"]
-        self.owner_id = config["owner_id"]
+        self.owner_id = _normalize_owner(config["owner_id"])
         self.api_version = "5.131"
         self.base_url = "https://api.vk.com/method"
 
@@ -84,6 +97,7 @@ class MusicAgent:
         logger.info(f"📊 Альбомов: {len(self.data.get('albums', []))}")
         logger.info(f"📊 EP: {len(self.data.get('eps', []))}")
         logger.info(f"📊 Синглов: {len(self.data.get('singles', []))}")
+        logger.info(f"📌 Owner ID (стена): {self.owner_id}")
 
     # ========================================================
     # ЧТЕНИЕ ФАЙЛОВ (устойчивое к "склеенному" JSON)
@@ -292,7 +306,8 @@ def main():
     # Проверка секретов до любой работы
     if not agent.access_token or not agent.owner_id:
         logger.error("❌ Не заданы секреты VK_ACCESS_TOKEN и/или VK_OWNER_ID! "
-                     "Задайте их: Settings → Secrets and variables → Actions")
+                     "Проверьте блок env: в music.yml: должны быть "
+                     "secrets.VK_TOKEN и secrets.VK_GROUP_ID")
         sys.exit(1)
 
     # Режим из аргумента командной строки: publish | stats | continuous
