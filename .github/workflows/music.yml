@@ -30,14 +30,14 @@ jobs:
           VK_OWNER_ID: ${{ secrets.VK_GROUP_ID }}
           VK_PHOTOS_TOKEN: ${{ secrets.VK_USER_TOKEN }}
 
-      - name: Commit published_albums.json
+      - name: Commit covers cache
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add published_albums.json || true
+          git add covers_cache.json || true
           if git diff --cached --quiet; then
             echo "Нет изменений для коммита"
           else
-            git commit -m "chore: update published albums"
+            git commit -m "chore: update covers cache"
             git push
           fi
