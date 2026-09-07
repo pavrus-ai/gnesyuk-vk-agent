@@ -2,12 +2,13 @@
 # -*- coding: utf-8 -*-
 """
 Музыкальный агент для публикации музыки в ВКонтакте
-Версия 3.7:
-  - ОДИН пост = ОДИН случайный трек с плеером + ФОТО (требование ВК:
-    "музыку можно опубликовать только вместе с фото")
-  - фото берётся автоматически из группы (случайное) или фиксированное из конфига
-  - в тексте поста указывается название альбома
-  - без учёта прогресса: вечная случайная ротация, 1 пост в день по расписанию
+Версия 3.8:
+  - пост = ФОТО + ОДИН случайный трек с плеером (требование ВК)
+  - НОВОЕ: photos.get вызывается ПОЛЬЗОВАТЕЛЬСКИМ токеном (VK_PHOTOS_TOKEN),
+    т.к. групповым токеном метод недоступен (ошибка 27);
+    пост при этом публикуется групповым токеном от имени группы
+  - если фото достать не удалось — можно задать фиксированную обложку cover_photo
+  - без учёта прогресса: вечная случайная ротация, 1 пост в день
 """
 
 import json
@@ -45,13 +46,16 @@ def _normalize_owner(raw_id: int) -> int:
 # ============================================================
 
 CONFIG = {
+    # Групповой токен — для публикации постов от имени группы
     "vk_access_token": (os.environ.get("VK_ACCESS_TOKEN") or "").strip(),
+    # Пользовательский токен — для чтения фото (photos.get групповым недоступен)
+    "vk_photos_token": (os.environ.get("VK_PHOTOS_TOKEN") or "").strip(),
     "owner_id": _parse_int(os.environ.get("VK_OWNER_ID")),
 
     "data_file": "music.json",
 
     # Фиксированная обложка (необязательно). Формат: photo-1389112_457234567
-    # Если пусто — агент сам возьмёт случайное фото из группы
+    # Если пусто — агент возьмёт случайное фото из группы через photos.get
     "cover_photo": "",
 
     # Сколько случайных треков публиковать за один запуск (1 раз в день -> 1)
@@ -88,6 +92,7 @@ class MusicAgent:
     def __init__(self, config: Dict):
         self.config = config
         self.access_token = config["vk_access_token"]
+        self.photos_token = config["vk_photos_token"] or config["vk_access_token"]
         self.owner_id = _normalize_owner(config["owner_id"])
         self.api_version = "5.131"
         self.base_url = "https://api.vk.com/method"
@@ -149,13 +154,14 @@ class MusicAgent:
     # VK API
     # ========================================================
 
-    def _make_request(self, method: str, params: Dict) -> Dict:
-        if not self.access_token:
-            logger.error("❌ Не задан VK_ACCESS_TOKEN!")
+    def _make_request(self, method: str, params: Dict, token: Optional[str] = None) -> Dict:
+        token = token or self.access_token
+        if not token:
+            logger.error("❌ Не задан токен ВК!")
             return {"success": False, "error": "no token"}
 
         params = dict(params)
-        params["access_token"] = self.access_token
+        params["access_token"] = token
         params["v"] = self.api_version
         try:
             r = requests.post(f"{self.base_url}/{method}", data=params, timeout=30)
@@ -174,8 +180,8 @@ class MusicAgent:
     # ========================================================
 
     def _get_photo_attachment(self) -> Optional[str]:
-        """Возвращает вложение photo...: фиксированное из конфига
-        или случайное фото из группы."""
+        """Фиксированная обложка из конфига или случайное фото группы
+        (читается ПОЛЬЗОВАТЕЛЬСКИМ токеном — групповым photos.get недоступен)."""
         fixed = (self.config.get("cover_photo") or "").strip()
         if fixed:
             return fixed
@@ -186,7 +192,7 @@ class MusicAgent:
                 params = {"owner_id": self.owner_id, "count": 100}
                 if album:
                     params["album_id"] = album
-                result = self._make_request("photos.get", params)
+                result = self._make_request("photos.get", params, token=self.photos_token)
                 if result["success"]:
                     items = result["response"].get("items", [])
                     if items:
@@ -247,8 +253,8 @@ class MusicAgent:
 
         photo = self._get_photo_attachment()
         if not photo:
-            logger.error("❌ В группе нет ни одного фото, а ВК требует фото вместе "
-                         "с музыкой. Загрузите фото в группу или задайте CONFIG['cover_photo']")
+            logger.error("❌ Не удалось достать фото группы. Загрузите фото в группу "
+                         "или задайте CONFIG['cover_photo'] (формат photo-XXXX_YYYY)")
             return False
 
         attachments = f"{photo},{track['audio_id']}"
