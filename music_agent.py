@@ -2,12 +2,12 @@
 # -*- coding: utf-8 -*-
 """
 Музыкальный агент для публикации музыки в ВКонтакте
-Версия 3.6:
-  - ОДИН пост = ОДИН случайный трек с плеером (1 аудиовставка, как требует ВК)
+Версия 3.7:
+  - ОДИН пост = ОДИН случайный трек с плеером + ФОТО (требование ВК:
+    "музыку можно опубликовать только вместе с фото")
+  - фото берётся автоматически из группы (случайное) или фиксированное из конфига
   - в тексте поста указывается название альбома
-  - НОВОЕ: никакого учёта прогресса — каждый запуск случайный трек,
-    ротация идёт бесконечно (с повторами). По расписанию — 1 раз в день.
-  - без input(), устойчив к "склеенному" JSON, безопасные секреты
+  - без учёта прогресса: вечная случайная ротация, 1 пост в день по расписанию
 """
 
 import json
@@ -15,7 +15,8 @@ import logging
 import os
 import random
 import sys
-from typing import Dict, List, Tuple
+import time
+from typing import Dict, List, Optional, Tuple
 
 import requests
 
@@ -49,7 +50,11 @@ CONFIG = {
 
     "data_file": "music.json",
 
-    # Сколько случайных треков публиковать за один запуск (по расписанию 1 раз/день -> 1)
+    # Фиксированная обложка (необязательно). Формат: photo-1389112_457234567
+    # Если пусто — агент сам возьмёт случайное фото из группы
+    "cover_photo": "",
+
+    # Сколько случайных треков публиковать за один запуск (1 раз в день -> 1)
     "posts_per_run": 1,
 
     # Пауза между постами внутри одного запуска (секунды, если posts_per_run > 1)
@@ -78,7 +83,7 @@ logger = logging.getLogger("music_agent")
 # ============================================================
 
 class MusicAgent:
-    """Агент публикации: один пост = один случайный трек с плеером (вечная ротация)"""
+    """Агент публикации: пост = фото + один случайный трек с плеером"""
 
     def __init__(self, config: Dict):
         self.config = config
@@ -86,6 +91,7 @@ class MusicAgent:
         self.owner_id = _normalize_owner(config["owner_id"])
         self.api_version = "5.131"
         self.base_url = "https://api.vk.com/method"
+        self._photo_cache: Optional[List[str]] = None
 
         self.data = self._load_data()
 
@@ -164,6 +170,39 @@ class MusicAgent:
             return {"success": False, "error": str(e)}
 
     # ========================================================
+    # ФОТО ДЛЯ ПОСТА (требование ВК: музыка только вместе с фото)
+    # ========================================================
+
+    def _get_photo_attachment(self) -> Optional[str]:
+        """Возвращает вложение photo...: фиксированное из конфига
+        или случайное фото из группы."""
+        fixed = (self.config.get("cover_photo") or "").strip()
+        if fixed:
+            return fixed
+
+        if self._photo_cache is None:
+            self._photo_cache = []
+            for album in ("", "wall", "profile", "saved"):
+                params = {"owner_id": self.owner_id, "count": 100}
+                if album:
+                    params["album_id"] = album
+                result = self._make_request("photos.get", params)
+                if result["success"]:
+                    items = result["response"].get("items", [])
+                    if items:
+                        for it in items:
+                            att = f"photo{it['owner_id']}_{it['id']}"
+                            if it.get("access_key"):
+                                att += f"_{it['access_key']}"
+                            self._photo_cache.append(att)
+                        break
+            logger.info(f"🖼 Фото группы доступно: {len(self._photo_cache)}")
+
+        if not self._photo_cache:
+            return None
+        return random.choice(self._photo_cache)
+
+    # ========================================================
     # СЛУЧАЙНЫЙ ВЫБОР ТРЕКА
     # ========================================================
 
@@ -180,7 +219,7 @@ class MusicAgent:
         return out
 
     def pick_random_tracks(self, limit: int) -> List[Tuple[Dict, Dict]]:
-        """Случайный выбор N треков из всего каталога (с возможными повторами)."""
+        """Случайный выбор N треков из всего каталога."""
         pool = self._all_playable_tracks()
         if not pool:
             return []
@@ -201,15 +240,24 @@ class MusicAgent:
         )
 
     def publish_track(self, release: Dict, track: Dict) -> bool:
-        """Пост с ОДНИМ треком (плеер) + название альбома в тексте."""
+        """Пост: ФОТО + ОДИН трек (плеер) + название альбома в тексте."""
         album_title = release.get("title", "")
         track_title = track.get("title", "")
         logger.info(f"🎲 Выбран случайный трек: {album_title} → {track_title}")
 
+        photo = self._get_photo_attachment()
+        if not photo:
+            logger.error("❌ В группе нет ни одного фото, а ВК требует фото вместе "
+                         "с музыкой. Загрузите фото в группу или задайте CONFIG['cover_photo']")
+            return False
+
+        attachments = f"{photo},{track['audio_id']}"
+        logger.info(f"📎 Вложения: {attachments}")
+
         result = self._make_request("wall.post", {
             "owner_id": self.owner_id,
             "message": self._post_text(release, track),
-            "attachments": track["audio_id"],   # ровно одна аудиовставка
+            "attachments": attachments,
             "from_group": 1 if self.owner_id < 0 else 0,
         })
 
@@ -237,7 +285,6 @@ class MusicAgent:
             if i > 0:
                 pause = self.config["pause_between_posts"]
                 logger.info(f"⏳ Пауза {pause} сек...")
-                import time
                 time.sleep(pause)
             if self.publish_track(release, track):
                 published_now.append(track["title"])
