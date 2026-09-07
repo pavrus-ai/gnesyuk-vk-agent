@@ -2,13 +2,12 @@
 # -*- coding: utf-8 -*-
 """
 Музыкальный агент для публикации музыки в ВКонтакте
-Версия 3.8:
-  - пост = ФОТО + ОДИН случайный трек с плеером (требование ВК)
-  - НОВОЕ: photos.get вызывается ПОЛЬЗОВАТЕЛЬСКИМ токеном (VK_PHOTOS_TOKEN),
-    т.к. групповым токеном метод недоступен (ошибка 27);
-    пост при этом публикуется групповым токеном от имени группы
-  - если фото достать не удалось — можно задать фиксированную обложку cover_photo
-  - без учёта прогресса: вечная случайная ротация, 1 пост в день
+Версия 3.10:
+  - пост = ОБЛОЖКА АЛЬБОМА из папки covers/ + ОДИН случайный трек с плеером
+  - соответствие "альбом -> файл обложки" задано точной таблицей COVER_MAP
+  - обложка загружается в ВК один раз на альбом, ID кэшируется в covers_cache.json
+  - в тексте поста указывается название альбома
+  - вечная случайная ротация, 1 пост в день
 """
 
 import json
@@ -22,17 +21,62 @@ from typing import Dict, List, Optional, Tuple
 import requests
 
 # ============================================================
+# ТАБЛИЦА: НАЗВАНИЕ АЛЬБОМА -> ФАЙЛ ОБЛОЖКИ В covers/
+# ============================================================
+
+COVER_MAP = {
+    # Альбомы
+    "Дар богов": "dar-bogov.jpg",
+    "Тишина вместо слов": "tishina-vmesto-slov.jpg",
+    "Imperium": "imperium.jpg",
+    "Цена тишины": "tsena-tishiny.jpg",
+    "Spirit": "spirit.jpg",
+    "Под одним небом": "pod-odnim-nebom.jpg",
+    "Дух свободы": "dukh-svobody.jpg",
+    "Небесный страж": "nebesnyy-strazh.jpg",
+    "Истоки славы": "istoki-slavy.jpg",
+    "Весенние чувства": "vesennie-chuvstva.jpg",
+    "Раскаленный мир": "raskalennyy-mir.jpg",
+    "Обжигающий": "obzhigayushchiy.jpg",
+    "Поколение ветра": "pokolenie-vetra.jpg",
+    "Тени Великой Тартарии": "teni-velikoy-tartarii.jpg",
+    "Пока ты ждёшь": "poka-ty-zhdesh.jpg",
+    "Сибирский ветер": "sibirskiy-veter.jpg",
+    "Бездна": "bezdna.jpg",
+    "Управление чувствами": "upravlenie-chuvstvami.jpg",
+    "Прикосновения": "prikosnoveniya.jpg",
+    "Энергия для души": "energiya-dlya-dushi.jpg",
+    "Оставим грусть. С Новым Годом!": "ostavim-grust.jpg",
+    "Турецкие мотивы": "turetskie-motivy.jpg",
+    "Enjoyments": "enjoyments.jpg",
+    "Горячий песок Египта": "goryachiy-pesok-egipta.jpg",
+    "Лекарство от печали": "lekarstvo-ot-pechali.jpg",
+    "Gloria Romae II": "gloria-romae-2.jpg",
+    "Gloria Romae": "gloria-romae.jpg",
+    # EP
+    "Твой свет": "tvoy-svet.jpg",
+    # Синглы
+    "Дух возвращается": "dukh-vozvrashchaetsya.jpg",
+    "Энергия существует": "energiya-sushchestvuet.jpg",
+    "Тёплый свет": "tyoplyy-svet.jpg",
+    "Чувственный горизонт": "chuvstvennyy-gorizont.jpg",
+    # Задел на будущее (уже загруженные обложки)
+    "Пленники Хроноса": "plenniki-khronosa.jpg",
+    "Россия матушка зовет": "rossiya-matushka-zovet.jpg",
+    "Шторм и штиль": "shtorm-i-shtil.jpg",
+    "Туманные зеркала": "tumannye-zerkala.jpg",
+}
+
+# ============================================================
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 # ============================================================
 
 def _parse_int(raw):
-    """Безопасно превращает строку из env в число. Пусто/мусор -> 0."""
     raw = (raw or "").strip()
     return int(raw) if raw.lstrip("-").isdigit() else 0
 
 
 def _normalize_owner(raw_id: int) -> int:
-    """Приводит ID группы к виду с минусом, убирая смещение 2000000000."""
     if raw_id == 0:
         return 0
     aid = abs(raw_id)
@@ -46,17 +90,16 @@ def _normalize_owner(raw_id: int) -> int:
 # ============================================================
 
 CONFIG = {
-    # Групповой токен — для публикации постов от имени группы
     "vk_access_token": (os.environ.get("VK_ACCESS_TOKEN") or "").strip(),
-    # Пользовательский токен — для чтения фото (photos.get групповым недоступен)
-    "vk_photos_token": (os.environ.get("VK_PHOTOS_TOKEN") or "").strip(),
     "owner_id": _parse_int(os.environ.get("VK_OWNER_ID")),
 
     "data_file": "music.json",
 
-    # Фиксированная обложка (необязательно). Формат: photo-1389112_457234567
-    # Если пусто — агент возьмёт случайное фото из группы через photos.get
-    "cover_photo": "",
+    # Папка с обложками в репозитории
+    "covers_dir": "covers",
+
+    # Кэш загруженных в ВК обложек: {альбом: photo...}
+    "covers_cache_file": "covers_cache.json",
 
     # Сколько случайных треков публиковать за один запуск (1 раз в день -> 1)
     "posts_per_run": 1,
@@ -87,18 +130,17 @@ logger = logging.getLogger("music_agent")
 # ============================================================
 
 class MusicAgent:
-    """Агент публикации: пост = фото + один случайный трек с плеером"""
+    """Пост = обложка альбома (из covers/) + один случайный трек с плеером"""
 
     def __init__(self, config: Dict):
         self.config = config
         self.access_token = config["vk_access_token"]
-        self.photos_token = config["vk_photos_token"] or config["vk_access_token"]
         self.owner_id = _normalize_owner(config["owner_id"])
         self.api_version = "5.131"
         self.base_url = "https://api.vk.com/method"
-        self._photo_cache: Optional[List[str]] = None
 
         self.data = self._load_data()
+        self.covers_cache = self._load_covers_cache()
 
         logger.info("🚀 Музыкальный агент инициализирован")
         logger.info(f"📊 Альбомов: {len(self.data.get('albums', []))}")
@@ -107,11 +149,10 @@ class MusicAgent:
         logger.info(f"📌 Owner ID (стена): {self.owner_id}")
 
     # ========================================================
-    # ЧТЕНИЕ ФАЙЛА music.json
+    # ЧТЕНИЕ ФАЙЛОВ
     # ========================================================
 
     def _load_data(self) -> Dict:
-        """Читает music.json, устойчив к нескольким JSON-документам в файле."""
         path = self.config["data_file"]
         if not os.path.exists(path):
             logger.error(f"❌ Файл {path} не найден!")
@@ -150,18 +191,34 @@ class MusicAgent:
 
         return max(docs, key=size)
 
+    def _load_covers_cache(self) -> Dict:
+        try:
+            if os.path.exists(self.config["covers_cache_file"]):
+                with open(self.config["covers_cache_file"], "r", encoding="utf-8") as f:
+                    return json.load(f)
+        except Exception as e:
+            logger.error(f"❌ Ошибка чтения кэша обложек: {e}")
+        return {}
+
+    def _save_covers_cache(self):
+        try:
+            with open(self.config["covers_cache_file"], "w", encoding="utf-8") as f:
+                json.dump(self.covers_cache, f, ensure_ascii=False, indent=2)
+            logger.info("✅ covers_cache.json сохранён")
+        except Exception as e:
+            logger.error(f"❌ Ошибка сохранения кэша обложек: {e}")
+
     # ========================================================
     # VK API
     # ========================================================
 
-    def _make_request(self, method: str, params: Dict, token: Optional[str] = None) -> Dict:
-        token = token or self.access_token
-        if not token:
-            logger.error("❌ Не задан токен ВК!")
+    def _make_request(self, method: str, params: Dict) -> Dict:
+        if not self.access_token:
+            logger.error("❌ Не задан VK_ACCESS_TOKEN!")
             return {"success": False, "error": "no token"}
 
         params = dict(params)
-        params["access_token"] = token
+        params["access_token"] = self.access_token
         params["v"] = self.api_version
         try:
             r = requests.post(f"{self.base_url}/{method}", data=params, timeout=30)
@@ -176,44 +233,81 @@ class MusicAgent:
             return {"success": False, "error": str(e)}
 
     # ========================================================
-    # ФОТО ДЛЯ ПОСТА (требование ВК: музыка только вместе с фото)
+    # ОБЛОЖКИ АЛЬБОМОВ
     # ========================================================
 
-    def _get_photo_attachment(self) -> Optional[str]:
-        """Фиксированная обложка из конфига или случайное фото группы
-        (читается ПОЛЬЗОВАТЕЛЬСКИМ токеном — групповым photos.get недоступен)."""
-        fixed = (self.config.get("cover_photo") or "").strip()
-        if fixed:
-            return fixed
-
-        if self._photo_cache is None:
-            self._photo_cache = []
-            for album in ("", "wall", "profile", "saved"):
-                params = {"owner_id": self.owner_id, "count": 100}
-                if album:
-                    params["album_id"] = album
-                result = self._make_request("photos.get", params, token=self.photos_token)
-                if result["success"]:
-                    items = result["response"].get("items", [])
-                    if items:
-                        for it in items:
-                            att = f"photo{it['owner_id']}_{it['id']}"
-                            if it.get("access_key"):
-                                att += f"_{it['access_key']}"
-                            self._photo_cache.append(att)
-                        break
-            logger.info(f"🖼 Фото группы доступно: {len(self._photo_cache)}")
-
-        if not self._photo_cache:
+    def _find_cover_file(self, album_title: str) -> Optional[str]:
+        """Ищет файл обложки по таблице COVER_MAP в папке covers/."""
+        fname = COVER_MAP.get(album_title)
+        if not fname:
+            logger.error(f"❌ Для альбома «{album_title}» нет записи в COVER_MAP!")
             return None
-        return random.choice(self._photo_cache)
+
+        path = os.path.join(self.config["covers_dir"], fname)
+        if not os.path.exists(path):
+            logger.error(f"❌ Файл обложки не найден: {path}")
+            return None
+        return path
+
+    def _upload_cover(self, path: str) -> Optional[str]:
+        """Загружает файл обложки в ВК и возвращает вложение photo..."""
+        server = self._make_request("photos.getWallUploadServer", {"owner_id": self.owner_id})
+        if not server["success"]:
+            return None
+
+        try:
+            with open(path, "rb") as f:
+                resp = requests.post(
+                    server["response"]["upload_url"],
+                    files={"file": (os.path.basename(path), f, "image/jpeg")},
+                    timeout=60,
+                )
+            data = resp.json()
+        except Exception as e:
+            logger.error(f"❌ Ошибка загрузки файла обложки: {e}")
+            return None
+
+        if not data.get("photo"):
+            logger.error(f"❌ ВК не принял файл обложки: {data}")
+            return None
+
+        save = self._make_request("photos.saveWallPhoto", {
+            "owner_id": self.owner_id,
+            "photo": data["photo"],
+            "hash": data.get("hash", ""),
+            "server": data.get("server", ""),
+        })
+        if not save["success"]:
+            return None
+
+        item = save["response"][0]
+        att = f"photo{item['owner_id']}_{item['id']}"
+        if item.get("access_key"):
+            att += f"_{item['access_key']}"
+        return att
+
+    def _get_album_photo(self, album_title: str) -> Optional[str]:
+        """Вложение photo... для альбома: из кэша или загрузка из covers/."""
+        if album_title in self.covers_cache:
+            return self.covers_cache[album_title]
+
+        path = self._find_cover_file(album_title)
+        if not path:
+            return None
+
+        logger.info(f"🖼 Загружаю обложку альбома «{album_title}» в ВК...")
+        att = self._upload_cover(path)
+        if att:
+            self.covers_cache[album_title] = att
+            self._save_covers_cache()
+            logger.info(f"✅ Обложка загружена: {att}")
+        return att
 
     # ========================================================
     # СЛУЧАЙНЫЙ ВЫБОР ТРЕКА
     # ========================================================
 
     def _all_playable_tracks(self) -> List[Tuple[Dict, Dict]]:
-        """Все треки с плеером из всех альбомов, EP и синглов."""
         out = []
         for key, rtype in (("albums", "album"), ("eps", "ep"), ("singles", "single")):
             for item in self.data.get(key, []):
@@ -225,7 +319,6 @@ class MusicAgent:
         return out
 
     def pick_random_tracks(self, limit: int) -> List[Tuple[Dict, Dict]]:
-        """Случайный выбор N треков из всего каталога."""
         pool = self._all_playable_tracks()
         if not pool:
             return []
@@ -246,19 +339,17 @@ class MusicAgent:
         )
 
     def publish_track(self, release: Dict, track: Dict) -> bool:
-        """Пост: ФОТО + ОДИН трек (плеер) + название альбома в тексте."""
         album_title = release.get("title", "")
         track_title = track.get("title", "")
         logger.info(f"🎲 Выбран случайный трек: {album_title} → {track_title}")
 
-        photo = self._get_photo_attachment()
+        photo = self._get_album_photo(album_title)
         if not photo:
-            logger.error("❌ Не удалось достать фото группы. Загрузите фото в группу "
-                         "или задайте CONFIG['cover_photo'] (формат photo-XXXX_YYYY)")
+            logger.error(f"❌ Нет обложки для «{album_title}» — пост пропущен")
             return False
 
         attachments = f"{photo},{track['audio_id']}"
-        logger.info(f"📎 Вложения: {attachments}")
+        logger.info("📎 Вложения: обложка альбома + трек с плеером")
 
         result = self._make_request("wall.post", {
             "owner_id": self.owner_id,
