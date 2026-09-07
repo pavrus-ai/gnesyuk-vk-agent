@@ -2,11 +2,13 @@
 # -*- coding: utf-8 -*-
 """
 Музыкальный агент для публикации музыки в ВКонтакте
-Версия 3.10:
+Версия 3.11:
   - пост = ОБЛОЖКА АЛЬБОМА из папки covers/ + ОДИН случайный трек с плеером
-  - соответствие "альбом -> файл обложки" задано точной таблицей COVER_MAP
-  - обложка загружается в ВК один раз на альбом, ID кэшируется в covers_cache.json
-  - в тексте поста указывается название альбома
+  - НОВОЕ: загрузка обложек ПОЛЬЗОВАТЕЛЬСКИМ токеном (VK_PHOTOS_TOKEN),
+    т.к. групповым токеном photos.getWallUploadServer недоступен (ошибка 27);
+    два пути: на стену группы -> запасной в "Сохранённые фотографии"
+  - пост публикуется групповым токеном от имени группы
+  - обложка загружается один раз на альбом, ID кэшируется в covers_cache.json
   - вечная случайная ротация, 1 пост в день
 """
 
@@ -60,7 +62,7 @@ COVER_MAP = {
     "Энергия существует": "energiya-sushchestvuet.jpg",
     "Тёплый свет": "tyoplyy-svet.jpg",
     "Чувственный горизонт": "chuvstvennyy-gorizont.jpg",
-    # Задел на будущее (уже загруженные обложки)
+    # Задел на будущее
     "Пленники Хроноса": "plenniki-khronosa.jpg",
     "Россия матушка зовет": "rossiya-matushka-zovet.jpg",
     "Шторм и штиль": "shtorm-i-shtil.jpg",
@@ -90,15 +92,14 @@ def _normalize_owner(raw_id: int) -> int:
 # ============================================================
 
 CONFIG = {
+    # Групповой токен — публикация постов от имени группы
     "vk_access_token": (os.environ.get("VK_ACCESS_TOKEN") or "").strip(),
+    # Пользовательский токен — загрузка обложек (групповым нельзя, ошибка 27)
+    "vk_photos_token": (os.environ.get("VK_PHOTOS_TOKEN") or "").strip(),
     "owner_id": _parse_int(os.environ.get("VK_OWNER_ID")),
 
     "data_file": "music.json",
-
-    # Папка с обложками в репозитории
     "covers_dir": "covers",
-
-    # Кэш загруженных в ВК обложек: {альбом: photo...}
     "covers_cache_file": "covers_cache.json",
 
     # Сколько случайных треков публиковать за один запуск (1 раз в день -> 1)
@@ -135,6 +136,7 @@ class MusicAgent:
     def __init__(self, config: Dict):
         self.config = config
         self.access_token = config["vk_access_token"]
+        self.photos_token = config["vk_photos_token"] or config["vk_access_token"]
         self.owner_id = _normalize_owner(config["owner_id"])
         self.api_version = "5.131"
         self.base_url = "https://api.vk.com/method"
@@ -212,13 +214,14 @@ class MusicAgent:
     # VK API
     # ========================================================
 
-    def _make_request(self, method: str, params: Dict) -> Dict:
-        if not self.access_token:
-            logger.error("❌ Не задан VK_ACCESS_TOKEN!")
+    def _make_request(self, method: str, params: Dict, token: Optional[str] = None) -> Dict:
+        token = token or self.access_token
+        if not token:
+            logger.error("❌ Не задан токен ВК!")
             return {"success": False, "error": "no token"}
 
         params = dict(params)
-        params["access_token"] = self.access_token
+        params["access_token"] = token
         params["v"] = self.api_version
         try:
             r = requests.post(f"{self.base_url}/{method}", data=params, timeout=30)
@@ -237,7 +240,6 @@ class MusicAgent:
     # ========================================================
 
     def _find_cover_file(self, album_title: str) -> Optional[str]:
-        """Ищет файл обложки по таблице COVER_MAP в папке covers/."""
         fname = COVER_MAP.get(album_title)
         if not fname:
             logger.error(f"❌ Для альбома «{album_title}» нет записи в COVER_MAP!")
@@ -249,16 +251,17 @@ class MusicAgent:
             return None
         return path
 
-    def _upload_cover(self, path: str) -> Optional[str]:
-        """Загружает файл обложки в ВК и возвращает вложение photo..."""
-        server = self._make_request("photos.getWallUploadServer", {"owner_id": self.owner_id})
-        if not server["success"]:
+    def _upload_via(self, server_method: str, server_params: Dict,
+                    save_method: str, save_params: Dict, path: str) -> Optional[str]:
+        """Общая схема: получить сервер -> загрузить файл -> сохранить -> photo..."""
+        srv = self._make_request(server_method, server_params, token=self.photos_token)
+        if not srv["success"]:
             return None
 
         try:
             with open(path, "rb") as f:
                 resp = requests.post(
-                    server["response"]["upload_url"],
+                    srv["response"]["upload_url"],
                     files={"file": (os.path.basename(path), f, "image/jpeg")},
                     timeout=60,
                 )
@@ -267,24 +270,41 @@ class MusicAgent:
             logger.error(f"❌ Ошибка загрузки файла обложки: {e}")
             return None
 
-        if not data.get("photo"):
+        if not data.get("photo") and not data.get("hash"):
             logger.error(f"❌ ВК не принял файл обложки: {data}")
             return None
 
-        save = self._make_request("photos.saveWallPhoto", {
-            "owner_id": self.owner_id,
-            "photo": data["photo"],
-            "hash": data.get("hash", ""),
-            "server": data.get("server", ""),
-        })
+        params = dict(save_params)
+        params["photo"] = data.get("photo", "")
+        params["hash"] = data.get("hash", "")
+        params["server"] = data.get("server", "")
+        save = self._make_request(save_method, params, token=self.photos_token)
         if not save["success"]:
             return None
 
-        item = save["response"][0]
+        items = save["response"]
+        item = items[0] if isinstance(items, list) else items
         att = f"photo{item['owner_id']}_{item['id']}"
         if item.get("access_key"):
             att += f"_{item['access_key']}"
         return att
+
+    def _upload_cover(self, path: str) -> Optional[str]:
+        """Путь 1: на стену группы. Путь 2 (запасной): в 'Сохранённые фотографии'."""
+        att = self._upload_via(
+            "photos.getWallUploadServer", {"owner_id": self.owner_id},
+            "photos.saveWallPhoto", {"owner_id": self.owner_id},
+            path,
+        )
+        if att:
+            return att
+
+        logger.warning("⚠️ Загрузка на стену не удалась — пробую 'Сохранённые фотографии'")
+        return self._upload_via(
+            "photos.getUploadServer", {"album_id": "saved"},
+            "photos.save", {},
+            path,
+        )
 
     def _get_album_photo(self, album_title: str) -> Optional[str]:
         """Вложение photo... для альбома: из кэша или загрузка из covers/."""
