@@ -13,10 +13,13 @@ POLLINATIONS_API = "https://image.pollinations.ai/prompt/"
 TAGS = "#ПавелГнесюк #книги #авторскийблог #писатель"
 RU = "\n\nВАЖНО: Пиши ТОЛЬКО на русском языке."
 
+# Минимальная средняя яркость картинки (0..255). Темнее — брак
+MIN_BRIGHTNESS = 100
+
 def log(msg):
     print(msg, flush=True)
 
-log("Версия ℹ️ vk-agent v4 (надёжная картинка: ретраи + owner_id + фолбэк)")
+log("Версия ℹ️ vk-agent v5 (яркие сцены без людей + контроль яркости)")
 
 def _extract(r):
     try: return r["choices"][0]["message"]["content"].strip()
@@ -69,7 +72,6 @@ def ai_text(prompt, minlen=600):
 # ============================================================
 
 def clean_txt(txt):
-    """Убирает markdown-мусор из ответа нейросети."""
     lines = []
     for ln in txt.splitlines():
         ln = ln.replace("**", "").replace("##", "").replace("###", "")
@@ -80,7 +82,6 @@ def clean_txt(txt):
     return out
 
 def trim_text(txt, limit):
-    """Обрезает текст по границе слов, не превышая limit."""
     if len(txt) <= limit:
         return txt
     cut = txt[:limit]
@@ -89,12 +90,12 @@ def trim_text(txt, limit):
     return cut.rstrip() + "…"
 
 def build_scene(post):
-    """Просит ИИ выделить одну кинематографичную сцену для картинки."""
-    prompt = (f"Из текста ниже выбери ОДНУ яркую зрительную сцену и опиши её в 1-2 предложениях "
-              f"для генерации картинки: место, действие, освещение, атмосфера. Без имён и цитат.\n\n"
+    """Сцена для картинки — СТРОГО без людей и лиц."""
+    prompt = (f"Из текста ниже выбери ОДНУ атмосферную сцену и опиши её в 1-2 предложениях "
+              f"БЕЗ ЛЮДЕЙ и без лиц: только место, предметы, природа, погода, свет, детали интерьера. "
+              f"Например: пустынный коридор архива с пыльными лучами света; ночная река и фонари на мосту.\n\n"
               f"ТЕКСТ: {post[:1500]}")
-    res = ai_text(prompt, minlen=30)
-    return res
+    return ai_text(prompt, minlen=30)
 
 # ============================================================
 # ПОСТЫ
@@ -143,7 +144,7 @@ def vk_call(method, params=None, token=None):
     return r.get("response")
 
 # ============================================================
-# КАРТИНКИ: генерация, проверка, загрузка
+# КАРТИНКИ: генерация, проверка яркости, загрузка
 # ============================================================
 
 def convert_to_jpeg(img_bytes):
@@ -158,39 +159,47 @@ def convert_to_jpeg(img_bytes):
         log(f"⚠️ Ошибка конвертации JPEG: {e}")
         return img_bytes
 
-def is_valid_image(img_bytes):
-    """Проверяет, что байты — настоящая картинка."""
+def image_stats(img_bytes):
+    """(валидность, средняя яркость 0..255)"""
     try:
         im = Image.open(io.BytesIO(img_bytes))
         im.verify()
-        return True
+        im = Image.open(io.BytesIO(img_bytes)).convert("L")
+        im.thumbnail((64, 64))
+        px = list(im.getdata())
+        return True, sum(px) / len(px)
     except Exception:
-        return False
+        return False, 0.0
 
-def download_image(prompt, seed):
-    """Скачивает картинку с pollinations с проверкой результата."""
-    clean_img = "".join(c for c in prompt if c.isalnum() or c.isspace() or c in ".,-")[:220].strip()
-    p = ("Photorealistic cinematic movie still for russian novel article, "
-         + clean_img + ", bright vivid colors, beautiful epic composition, warm golden daylight, "
-         "highly detailed, sharp focus, crisp edges, high resolution, full-body figures in action "
-         "seen from behind or from a distance, faces NOT visible, no close-up portraits, no text")
+def download_image(scene_text, seed):
+    """Генерация яркой сцены БЕЗ людей + контроль яркости результата."""
+    clean_img = "".join(c for c in scene_text if c.isalnum() or c.isspace() or c in ".,-")[:220].strip()
+    p = ("Wide-angle cinematic landscape photograph, absolutely NO people, NO faces, NO portraits, "
+         "bright vivid saturated colors, high contrast, warm golden daylight, crisp sharp details. "
+         "Scene: " + clean_img + ". "
+         "Empty space without humans, only environment and objects, eye-level wide shot, "
+         "no text, no watermark")
     url = (POLLINATIONS_API + requests.utils.quote(p) +
            f"?nologo=true&seed={seed}&model=flux&width=1280&height=960")
     try:
         r = requests.get(url, timeout=240)
         r.raise_for_status()
-        if is_valid_image(r.content):
-            log(f"✅ Картинка: {len(r.content)} байт (seed={seed})")
-            return r.content
-        log(f"⚠️ Pollinations вернул не картинку (seed={seed})")
+        ok, bright = image_stats(r.content)
+        if not ok:
+            log(f"⚠️ Pollinations вернул не картинку (seed={seed})")
+            return None
+        log(f"🔆 Яркость картинки: {bright:.0f} (порог {MIN_BRIGHTNESS})")
+        if bright < MIN_BRIGHTNESS:
+            log(f"⚠️ Слишком тёмная картинка (seed={seed}) — отбракована")
+            return None
+        log(f"✅ Картинка: {len(r.content)} байт (seed={seed})")
+        return r.content
     except Exception as e:
         log(f"⚠️ Ошибка скачивания картинки (seed={seed}): {e}")
-    return None
+        return None
 
 def vk_upload_photo(img_bytes):
-    """Загрузка фото на стену группы.
-    НОВОЕ в v4: сначала пробуем owner_id (отрицательный) — эта комбинация
-    доказанно работает с пользовательским токеном; group_id — запасной вариант."""
+    """Загрузка фото на стену группы: сначала owner_id (рабочий вариант), group_id — запасной."""
     tok = VK_USER_TOKEN or VK_TOKEN
     if not tok:
         log("⚠️ Нет токена для загрузки фото")
@@ -206,8 +215,8 @@ def vk_upload_photo(img_bytes):
     log(f"💾 Сохранено локально: {local_path}")
 
     variants = (
-        {"owner_id": "-" + VK_GROUP_ID},   # доказанный рабочий вариант
-        {"group_id": VK_GROUP_ID},         # запасной
+        {"owner_id": "-" + VK_GROUP_ID},
+        {"group_id": VK_GROUP_ID},
     )
     for params in variants:
         srv = vk_call("photos.getWallUploadServer", params, token=tok)
@@ -270,25 +279,34 @@ def main():
     link_part = f"\n\n📖 Читайте на ЛитРес: {book['url']}"
     caption = trim_text(post, 2000 - len(link_part) - len(TAGS) - 2) + link_part + "\n\n" + TAGS
 
-    # --- Картинка: до 3 попыток генерации с разными seed ---
+    # --- Картинка: до 4 попыток (яркая сцена без людей) ---
     scene = build_scene(post)
     base_img = scene if scene else book.get("about", "")[:120]
     run_no = int(os.environ.get("GITHUB_RUN_NUMBER", "0"))
     img_bytes = None
-    for attempt in range(3):
+    for attempt in range(4):
         seed = day + 3000000 + (run_no % 100) + attempt * 7919
         img_bytes = download_image(base_img, seed)
         if img_bytes:
             break
         log(f"⏳ Попытка {attempt + 1} не удалась, пробуем снова...")
 
-    # --- Фолбэк: последняя сохранённая картинка из img/ ---
+    # --- Умный фолбэк: самый ЯРКИЙ из старых файлов img/vk_*.jpg ---
     if not img_bytes:
-        old = sorted(glob.glob("img/vk_*.jpg"), key=os.path.getmtime)
-        if old:
-            log(f"⚠️ Генерация не удалась — беру прежнюю картинку {old[-1]}")
-            with open(old[-1], "rb") as f:
+        candidates = []
+        for f in glob.glob("img/vk_*.jpg"):
+            with open(f, "rb") as fh:
+                ok, bright = image_stats(fh.read())
+            if ok and bright >= MIN_BRIGHTNESS:
+                candidates.append((bright, f))
+        if candidates:
+            candidates.sort(reverse=True)
+            pick = candidates[0][1]
+            log(f"⚠️ Генерация не удалась — беру яркую прежнюю картинку {pick}")
+            with open(pick, "rb") as f:
                 img_bytes = f.read()
+        else:
+            log("⚠️ Нет ни свежей, ни подходящей старой картинки")
 
     # --- Загрузка и публикация ---
     att = vk_upload_photo(img_bytes) if img_bytes else None
