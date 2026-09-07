@@ -359,7 +359,7 @@ class MusicAgent:
             logger.error(f"❌ Нет обложки для «{album_title}» — пост пропущен")
             return False
 
-        attachments = f"{photo},{track['audio_id']}"
+        attachments = f"{track['audio_id']},{photo}"
         logger.info("📎 Вложения: обложка альбома + трек с плеером")
 
         result = self._make_request("wall.post", {
