@@ -2,7 +2,10 @@
 # -*- coding: utf-8 -*-
 """
 Музыкальный агент для публикации альбомов в ВКонтакте
-Версия 3.0 — для GitHub Actions: без input(), устойчив к битому JSON
+Версия 3.1 — для GitHub Actions:
+  - без input() (режим через аргументы командной строки)
+  - устойчив к "склеенному" JSON в music.json
+  - безопасное чтение секретов (не падает на пустых значениях)
 """
 
 import json
@@ -16,22 +19,32 @@ from typing import Dict, List
 import requests
 
 # ============================================================
+# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+# ============================================================
+
+def _parse_int(raw):
+    """Безопасно превращает строку из env в число. Пусто/мусор -> 0."""
+    raw = (raw or "").strip()
+    return int(raw) if raw.lstrip("-").isdigit() else 0
+
+
+# ============================================================
 # КОНФИГУРАЦИЯ
 # ============================================================
 
 CONFIG = {
-    # Токен из секрета GitHub (Settings → Secrets → VK_ACCESS_TOKEN)
-    "vk_access_token": os.environ.get("VK_ACCESS_TOKEN", ""),
+    # Секреты из GitHub: Settings → Secrets and variables → Actions
+    "vk_access_token": (os.environ.get("VK_ACCESS_TOKEN") or "").strip(),
+    "owner_id": _parse_int(os.environ.get("VK_OWNER_ID")),
 
-    # ID группы (отрицательный) или страницы. Тоже из секрета
-    "owner_id": int(os.environ.get("VK_OWNER_ID", "0")),
-
+    # Файлы
     "data_file": "music.json",
     "published_file": "published_albums.json",
 
     # Минимальный интервал между публикациями (часов). 0 = без ограничения
     "publish_interval_hours": 0,
 
+    # Шаблон поста
     "post_template": (
         "🎵 {artist} представляет: {release_type} «{album_title}»!\n\n"
         "🎼 Жанр: {genre}\n"
@@ -50,8 +63,12 @@ logging.basicConfig(
 logger = logging.getLogger("music_agent")
 
 
+# ============================================================
+# КЛАСС АГЕНТА
+# ============================================================
+
 class MusicAgent:
-    """Агент публикации музыки в ВК"""
+    """Агент публикации музыки в ВКонтакте"""
 
     def __init__(self, config: Dict):
         self.config = config
@@ -114,27 +131,30 @@ class MusicAgent:
         return max(docs, key=size)
 
     def _load_published(self) -> Dict:
+        """Список уже опубликованных релизов"""
         try:
             if os.path.exists(self.config["published_file"]):
                 with open(self.config["published_file"], "r", encoding="utf-8") as f:
                     return json.load(f)
         except Exception as e:
-            logger.error(f"❌ Ошибка чтения published: {e}")
+            logger.error(f"❌ Ошибка чтения published_albums.json: {e}")
         return {"published_albums": [], "last_publish_time": None}
 
     def _save_published(self):
+        """Сохранение списка опубликованных релизов"""
         try:
             with open(self.config["published_file"], "w", encoding="utf-8") as f:
                 json.dump(self.published, f, ensure_ascii=False, indent=2)
             logger.info("✅ published_albums.json сохранён")
         except Exception as e:
-            logger.error(f"❌ Ошибка сохранения: {e}")
+            logger.error(f"❌ Ошибка сохранения published_albums.json: {e}")
 
     # ========================================================
     # VK API
     # ========================================================
 
     def _make_request(self, method: str, params: Dict) -> Dict:
+        """Запрос к VK API"""
         if not self.access_token:
             logger.error("❌ Не задан VK_ACCESS_TOKEN!")
             return {"success": False, "error": "no token"}
@@ -155,6 +175,7 @@ class MusicAgent:
             return {"success": False, "error": str(e)}
 
     def _post_text(self, release: Dict) -> str:
+        """Текст поста для релиза"""
         artist = self.data.get("metadata", {}).get("artist", "Павел Гнесюк")
         type_names = {"album": "альбом", "ep": "EP", "single": "сингл"}
         tracks = release.get("tracks", [])
@@ -170,6 +191,7 @@ class MusicAgent:
         )
 
     def publish_release(self, release: Dict) -> bool:
+        """Публикация одного релиза на стене"""
         title = release.get("title", "")
         logger.info(f"📤 Публикую: {title}")
 
@@ -199,10 +221,11 @@ class MusicAgent:
         return False
 
     # ========================================================
-    # ЛОГИКА
+    # ЛОГИКА ПУБЛИКАЦИИ
     # ========================================================
 
     def get_unpublished(self) -> List[Dict]:
+        """Релизы, которые ещё не публиковались"""
         done = {p["title"] for p in self.published["published_albums"]}
         out = []
         for key, rtype in (("albums", "album"), ("eps", "ep"), ("singles", "single")):
@@ -214,6 +237,7 @@ class MusicAgent:
         return out
 
     def can_publish_now(self) -> bool:
+        """Проверка минимального интервала между публикациями"""
         hours = self.config["publish_interval_hours"]
         if hours <= 0 or not self.published["last_publish_time"]:
             return True
@@ -221,6 +245,7 @@ class MusicAgent:
         return datetime.now() - last >= timedelta(hours=hours)
 
     def run_once(self) -> Dict:
+        """Однократный запуск: публикует один релиз"""
         logger.info("=" * 50)
         if not self.can_publish_now():
             logger.info("⏳ Интервал не выдержан — пропуск.")
@@ -237,6 +262,7 @@ class MusicAgent:
         return {"success": False, "reason": "publish_failed"}
 
     def run_continuous(self):
+        """Непрерывный режим (для локального запуска)"""
         logger.info("🔄 Непрерывный режим (Ctrl+C для остановки)")
         while True:
             try:
@@ -247,10 +273,12 @@ class MusicAgent:
                 break
 
     def print_stats(self):
+        """Статистика публикаций"""
         total = sum(len(self.data.get(k, [])) for k in ("albums", "eps", "singles"))
         done = len(self.published["published_albums"])
         pct = round(done / total * 100, 1) if total else 0
-        print(f"\n📊 Всего: {total} | Опубликовано: {done} | Осталось: {total - done} | Прогресс: {pct}%\n")
+        print(f"\n📊 Всего: {total} | Опубликовано: {done} | "
+              f"Осталось: {total - done} | Прогресс: {pct}%\n")
 
 
 # ============================================================
@@ -260,6 +288,12 @@ class MusicAgent:
 def main():
     print("\n🎵 МУЗЫКАЛЬНЫЙ АГЕНТ ВКОНТАКТЕ 🎵\n")
     agent = MusicAgent(CONFIG)
+
+    # Проверка секретов до любой работы
+    if not agent.access_token or not agent.owner_id:
+        logger.error("❌ Не заданы секреты VK_ACCESS_TOKEN и/или VK_OWNER_ID! "
+                     "Задайте их: Settings → Secrets and variables → Actions")
+        sys.exit(1)
 
     # Режим из аргумента командной строки: publish | stats | continuous
     mode = sys.argv[1].lower() if len(sys.argv) > 1 else "publish"
@@ -271,7 +305,7 @@ def main():
     else:  # по умолчанию — публикация одного релиза (для GitHub Actions)
         result = agent.run_once()
         if result.get("success"):
-            print(f"\n✅ Готово: {result.get('published', 'все опубликованы')}")
+            print(f"\n✅ Готово: {result.get('published', 'все релизы опубликованы')}")
         else:
             print(f"\nℹ️ Пропущено: {result.get('reason')}")
             sys.exit(1)
