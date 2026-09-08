@@ -277,3 +277,231 @@ def choose_image(imgs, referer):
             if rs.status_code != 200:
                 if err_log < 4:
                     log(f"   ⚠️ img HTTP {rs.status_code}: {u[:90]}")
+                    err_log += 1
+                continue
+            if len(rs.content) < 5000:
+                continue
+            im = Image.open(io.BytesIO(rs.content))
+            w, h = im.size
+            checked += 1
+            if w < 400 or h < 300:
+                continue
+            if w * h > best_px:
+                best_px, best = w * h, rs.content
+        except Exception as e:
+            if err_log < 4:
+                log(f"   ⚠️ img ошибка: {u[:90]} ({str(e)[:40]})")
+                err_log += 1
+            continue
+    log(f"ℹ️ Проверено картинок: {checked}, лучшая: {best_px} px")
+    if best:
+        log(f"✅ Фото товара: {len(best)} байт")
+    else:
+        log("⚠️ Подходящего фото нет")
+    return best
+
+def pick_page(urls, hist):
+    blocked = 0
+    last_ok = None
+    for attempt in range(10):
+        available = [u for u in urls if u not in hist]
+        if not available:
+            log("ℹ️ История полная — начинаю круг заново")
+            available = urls
+        page = random.choice([u for u in available if brand_rank(u) == 0][:300] or available[:300])
+        try:
+            rs = requests.get(page, timeout=30, headers=UA)
+        except Exception:
+            blocked += 1
+            log(f"⚠️ Попытка {attempt+1}: сайт не ответил — {page}")
+            time.sleep(2)
+            continue
+        if rs.status_code != 200:
+            blocked += 1
+            log(f"⚠️ Попытка {attempt+1}: HTTP {rs.status_code} — {page}")
+            time.sleep(2)
+            continue
+        r = rs.text
+        if len(r) < 3000:
+            blocked += 1
+            log(f"⚠️ Попытка {attempt+1}: заглушка ({len(r)} байт)")
+            time.sleep(2)
+            continue
+
+        h1 = get_h1(r) or get_title_fallback(r)
+        if not h1 or not any(b in h1.lower() for b in BRANDS):
+            log(f"⚠️ Попытка {attempt+1}: в заголовке нет бренда («{h1[:50]}») — {page}")
+            continue
+        desc, body, imgs = parse_page(r, h1)
+        if len(body) + len(desc) < 40:
+            log(f"⚠️ Попытка {attempt+1}: мало текста — {page}")
+            continue
+        last_ok = (page, h1, desc, body)
+        img = choose_image(imgs, page)
+        if not img:
+            log(f"⚠️ Попытка {attempt+1}: нет фото ≥400x300 — беру следующую страницу")
+            continue
+        log(f"✅ Попытка {attempt+1}: товар «{h1[:70]}» с фото — {page}")
+        return page, h1, desc, body, img, blocked, last_ok
+    return None, "", "", "", None, blocked, last_ok
+
+# ============================================================
+# ВК v11: загрузка фото ТОЛЬКО через community token (VK_TOKEN)
+# ============================================================
+
+def vk_call(method, params, token):
+    p = dict(params or {})
+    p["access_token"] = token
+    p["v"] = VK_V
+    try:
+        r = requests.post(API + method, data=p, timeout=30).json()
+    except Exception as e:
+        log(f"⚠️ VK {method}: {e}")
+        return None
+    if "error" in r:
+        log(f"⚠️ VK {method}: {str(r.get('error'))[:150]}")
+        return None
+    return r.get("response")
+
+def vk_upload(img_bytes):
+    """КЛЮЧЕВОЕ v11: используем ТОЛЬКО community token (VK_TOKEN).
+    Тогда фото принадлежит группе, и wall.post с from_group=1 опубликует пост на стене,
+    а не в предложенных. VK_USER_TOKEN больше не трогаем."""
+    if not VK_TOKEN:
+        log("❌ VK_TOKEN не задан — не могу загрузить фото")
+        return None
+
+    # Только community token. Пробуем оба способа указания группы.
+    for params in ({"owner_id": "-" + VK_GROUP_ID}, {"group_id": VK_GROUP_ID}):
+        srv = vk_call("photos.getWallUploadServer", params, VK_TOKEN)
+        if not srv or "upload_url" not in srv:
+            continue
+        try:
+            r = requests.post(srv["upload_url"],
+                files={"photo": ("product.jpg", img_bytes, "image/jpeg")}, timeout=120).json()
+        except Exception:
+            continue
+        if "photo" not in r:
+            continue
+        sp = dict(params)
+        sp.update({"photo": r["photo"], "server": r.get("server", ""), "hash": r.get("hash", "")})
+        saved = vk_call("photos.saveWallPhoto", sp, VK_TOKEN)
+        if saved:
+            p = saved[0]
+            # Фото должно быть привязано к группе: owner_id = -GROUP_ID
+            if p.get("owner_id") == -int(VK_GROUP_ID):
+                log(f"✅ ВК: фото принадлежит ГРУППЕ → пост пойдёт на стену: photo{p['owner_id']}_{p['id']}")
+            else:
+                log(f"⚠️ ВК: фото owner_id={p.get('owner_id')} (не группа) — пост может уйти в предложенные")
+            att = f"photo{p['owner_id']}_{p['id']}"
+            if p.get("access_key"):
+                att += f"_{p['access_key']}"
+            return att
+    return None
+
+def vk_post(message, att):
+    params = {
+        "owner_id": "-" + VK_GROUP_ID,
+        "message": message,
+        "from_group": 1,
+        "signed": 0,   # явно: без подписи пользователя
+    }
+    if att:
+        params["attachments"] = att
+    res = vk_call("wall.post", params, VK_TOKEN)
+    if res:
+        log(f"✅ ВК: пост на стене: https://vk.com/wall-{VK_GROUP_ID}_{res.get('post_id')}")
+        return True
+    return False
+
+def tg_post(img_bytes, caption):
+    if not TG_BOT or not TG_CHAT:
+        log("ℹ️ TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID не заданы — TG пропущен")
+        return
+    caption = caption[:1020].rstrip()
+    if img_bytes:
+        r = requests.post(f"https://api.telegram.org/bot{TG_BOT}/sendPhoto",
+            data={"chat_id": TG_CHAT, "caption": caption},
+            files={"photo": ("product.jpg", img_bytes, "image/jpeg")}, timeout=120).json()
+    else:
+        r = requests.post(f"https://api.telegram.org/bot{TG_BOT}/sendMessage",
+            data={"chat_id": TG_CHAT, "text": caption}, timeout=60).json()
+    if r.get("ok"):
+        log(f"✅ TG: карточка отправлена в {TG_CHAT}")
+    else:
+        log(f"⚠️ TG: {str(r)[:200]}")
+
+# ============================================================
+# ГЛАВНАЯ ЛОГИКА
+# ============================================================
+
+def main():
+    urls, need_fetch = load_cache()
+    if need_fetch:
+        try:
+            urls = fetch_sitemap()
+        except Exception as e:
+            log(f"❌ Сайт недоступен и кэша нет: {e} — пропускаю запуск")
+            sys.exit(0)
+    urls.sort(key=brand_rank)
+
+    try:
+        hist = set(json.load(open(HISTORY, encoding="utf-8"))) if os.path.exists(HISTORY) else set()
+    except Exception:
+        hist = set()
+
+    page, title, desc, body, img, blocked, last_ok = pick_page(urls, hist)
+
+    if not page:
+        if blocked >= 5:
+            log("❌ Сайт блокирует запросы — останавливаюсь")
+            sys.exit(0)
+        if last_ok:
+            page, title, desc, body = last_ok
+            img = None
+            log("⚠️ Публикую текстовый пост (фото не найдено ни на одной странице)")
+        else:
+            log("❌ Не найдено ни одной подходящей страницы")
+            sys.exit(1)
+
+    hist.add(page)
+    json.dump(sorted(hist), open(HISTORY, "w", encoding="utf-8"), ensure_ascii=False)
+
+    prompt = (
+        f"Напиши пост для сообщества ВКонтакте «Группа SBL» о товаре.\n\n"
+        f"ТОВАР: {title}\n"
+        f"ОПИСАНИЕ: {desc}\n"
+        f"ДЕТАЛИ: {body[:900]}\n\n"
+        f"ТРЕБОВАНИЯ:\n"
+        f"1. ТОЛЬКО русский язык.\n"
+        f"2. 500-900 символов, живо и по-деловому, без капса и кликбейта.\n"
+        f"3. Начни с названия товара обычной строкой.\n"
+        f"4. Подчеркни применение: конференц-залы, презентации, мероприятия.\n"
+        f"5. В конце строка: «Подробнее: {page}»\n"
+        f"6. Без хэштегов."
+    )
+    text = ai_call(prompt, 400)
+    if not text:
+        text = f"{title}\n\n{desc or body[:900]}\n\nПодробнее: {page}"
+    text = text.replace("**", "").replace("##", "").strip()
+    if len(text) > 1500:
+        text = text[:1500].rsplit(" ", 1)[0].rstrip() + f"\n\nПодробнее: {page}"
+    log(f"📝 Текст поста: {len(text)} симв.")
+
+    att = vk_upload(img) if img else None
+    ok = vk_post(text, att)
+    if not ok:
+        log("❌ ВК: пост не опубликован")
+        sys.exit(1)
+    tg_post(img, text)
+
+    log("=" * 50)
+    log("✅ FINISH: товар → ВК sblgroup (на стену!) + TG @pavrusav → Дзен!")
+    log("=" * 50)
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as e:
+        log(f"❌ КРИТИЧЕСКАЯ ОШИБКА: {e}")
+        raise
