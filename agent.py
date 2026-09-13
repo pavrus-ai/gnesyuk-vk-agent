@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import os, json, datetime, requests, time, io, glob, urllib3
+import os, json, datetime, requests, time, io, glob, base64, urllib3
 from PIL import Image
 urllib3.disable_warnings()
 
@@ -10,6 +10,8 @@ OR_KEY2 = os.environ.get("OPENROUTER_KEY2", "").strip()
 CEREBRAS_KEY = os.environ.get("CEREBRAS_KEY", "").strip()
 MISTRAL_KEY = os.environ.get("MISTRAL_KEY", "").strip()
 GH_AI_TOKEN = os.environ.get("GITHUB_TOKEN", "").strip()
+OPENAI_KEY = os.environ.get("OPENAI_KEY", "").strip()
+HF_TOKEN = os.environ.get("HF_TOKEN", "").strip()
 VK_TOKEN = os.environ.get("VK_TOKEN", "").strip()
 VK_USER_TOKEN = os.environ.get("VK_USER_TOKEN", "").strip()
 VK_GROUP_ID = os.environ.get("VK_GROUP_ID", "").strip().lstrip("-")
@@ -24,10 +26,10 @@ MIN_BRIGHTNESS = 90
 def log(msg):
     print(msg, flush=True)
 
-log("Версия ℹ️ vk-agent v9 (книги → ВК: 8 ступеней ИИ + повторы загрузки + альбом группы как запасной путь + обрезка знака)")
+log("Версия ℹ️ vk-agent v10 (книги → ВК: картинки DALL-E 3 → HF FLUX → pollinations+обрезка; 8 ступеней ИИ; альбом группы)")
 
 # ============================================================
-# ИИ: 8 ступеней
+# ИИ-ТЕКСТ: 8 ступеней
 # ============================================================
 
 def _extract(r):
@@ -187,7 +189,7 @@ def build_scene(post):
     return ai_text(prompt, minlen=30)
 
 # ============================================================
-# КАРТИНКИ + обрезка водяного знака
+# КАРТИНКИ v10: OpenAI DALL-E 3 → HF FLUX → pollinations+обрезка
 # ============================================================
 
 def image_stats(img_bytes):
@@ -202,6 +204,7 @@ def image_stats(img_bytes):
         return False, 0.0
 
 def strip_watermark(img_bytes):
+    """Только для pollinations: срезаем нижнюю полосу 9% с логотипом."""
     try:
         im = Image.open(io.BytesIO(img_bytes))
         w, h = im.size
@@ -215,13 +218,69 @@ def strip_watermark(img_bytes):
         log(f"⚠️ strip_watermark: {e}")
         return img_bytes
 
+def openai_image(prompt):
+    """DALL-E 3: высокое качество, без водяных знаков."""
+    if not OPENAI_KEY:
+        return None
+    full = prompt + ", photorealistic, high resolution, no text, no logos, no watermark"
+    try:
+        r = requests.post("https://api.openai.com/v1/images/generations",
+            headers={"Authorization": f"Bearer {OPENAI_KEY}",
+                     "Content-Type": "application/json"},
+            json={"model": "dall-e-3", "prompt": full, "n": 1,
+                  "size": "1024x1024", "quality": "standard",
+                  "response_format": "b64_json"}, timeout=120).json()
+        if "error" in r:
+            log(f"⚠️ OpenAI DALL-E 3: {str(r['error'])[:120]}")
+            return None
+        data = base64.b64decode(r["data"][0]["b64_json"])
+        log(f"✅ OpenAI DALL-E 3: картинка {len(data)} байт (без водяного знака)")
+        return data
+    except Exception as e:
+        log(f"⚠️ OpenAI ошибка: {e}")
+        return None
+
+def hf_image(prompt):
+    """Hugging Face FLUX: бесплатно, без водяных знаков."""
+    if not HF_TOKEN:
+        return None
+    full = prompt + ", photorealistic, high resolution, no text, no logos, no watermark"
+    for mdl in ("black-forest-labs/FLUX.1-schnell", "black-forest-labs/FLUX.1-dev"):
+        try:
+            r = requests.post(f"https://api-inference.huggingface.co/models/{mdl}",
+                headers={"Authorization": f"Bearer {HF_TOKEN}"},
+                json={"inputs": full}, timeout=120)
+            if r.status_code == 200 and r.headers.get("Content-Type", "").startswith("image/"):
+                log(f"✅ HF {mdl}: картинка {len(r.content)} байт (без водяного знака)")
+                return r.content
+            log(f"⚠️ HF {mdl}: ответ {r.status_code}: {r.text[:80]}")
+        except Exception as e:
+            log(f"⚠️ HF {mdl} ошибка: {e}")
+    return None
+
 def download_image(scene_text, seed):
+    """Цепочка: DALL-E 3 → HF FLUX → pollinations (+обрезка знака)."""
     clean_img = "".join(c for c in scene_text if c.isalnum() or c.isspace() or c in ".,-")[:220].strip()
     p = ("Wide-angle cinematic landscape photograph, absolutely NO people, NO faces, NO portraits, "
          "bright vivid saturated colors, high contrast, warm golden daylight, crisp sharp details. "
          "Scene: " + clean_img + ". "
          "Empty space without humans, only environment and objects, eye-level wide shot, "
          "no text, no watermark")
+    # 1) OpenAI DALL-E 3
+    g = openai_image(p)
+    if g:
+        ok, bright = image_stats(g)
+        if ok and bright >= MIN_BRIGHTNESS:
+            return g
+        log(f"⚠️ DALL-E 3 картинка слишком тёмная ({bright:.0f}) — пробую дальше")
+    # 2) HF FLUX
+    g = hf_image(p)
+    if g:
+        ok, bright = image_stats(g)
+        if ok and bright >= MIN_BRIGHTNESS:
+            return g
+        log(f"⚠️ HF FLUX картинка слишком тёмная ({bright:.0f}) — пробую дальше")
+    # 3) pollinations + обрезка знака
     url = (POLLINATIONS_API + requests.utils.quote(p) +
            f"?nologo=true&seed={seed}&model=flux&width=1280&height=960")
     try:
@@ -251,7 +310,7 @@ def convert_to_jpeg(img_bytes):
         return img_bytes
 
 # ============================================================
-# ВК v9: путь 1 (wall server с повторами) → путь 2 (альбом группы)
+# ВК v10: путь 1 (wall server) → путь 2 (альбом группы)
 # ============================================================
 
 def vk_call(method, params=None, token=None):
@@ -269,7 +328,6 @@ def vk_call(method, params=None, token=None):
     return r.get("response")
 
 def vk_get_album_id():
-    """ID альбома книжной группы: секрет VK_ALBUM_ID → файл vk_album.json."""
     env_id = os.environ.get("VK_ALBUM_ID", "").strip()
     if env_id.isdigit():
         return int(env_id)
@@ -282,7 +340,6 @@ def vk_get_album_id():
     return None
 
 def vk_upload_via_album(img_bytes):
-    """Запасной путь: загрузка в альбом группы (минует флуд getWallUploadServer)."""
     album = vk_get_album_id()
     if not album:
         log("ℹ️ ВК: путь 2 пропущен (нет VK_ALBUM_ID / vk_album.json)")
@@ -411,9 +468,9 @@ def main():
         if candidates:
             candidates.sort(reverse=True)
             pick = candidates[0][1]
-            log(f"⚠️ Генерация не удалась — беру прежнюю картинку {pick} и срезаю знак")
+            log(f"⚠️ Генерация не удалась — беру прежнюю картинку {pick}")
             with open(pick, "rb") as f:
-                img_bytes = strip_watermark(f.read())
+                img_bytes = f.read()
         else:
             log("⚠️ Нет ни свежей, ни подходящей старой картинки")
 
@@ -423,7 +480,7 @@ def main():
     vk_post_wall(caption, att)
 
     log("=" * 50)
-    log("✅ FINISH: пост о книге → ВК!" + (" (с картинкой без знака)" if att else " (БЕЗ картинки!)"))
+    log("✅ FINISH: пост о книге → ВК!" + (" (с картинкой)" if att else " (БЕЗ картинки!)"))
     log("=" * 50)
 
 if __name__ == "__main__":
