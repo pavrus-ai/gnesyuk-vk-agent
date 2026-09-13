@@ -34,6 +34,8 @@ jobs:
           GROQ_KEY2: ${{ secrets.GROQ_KEY2 }}
           OPENROUTER_KEY: ${{ secrets.OPENROUTER_KEY }}
           OPENROUTER_KEY2: ${{ secrets.OPENROUTER_KEY2 }}
+          OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
       - name: Commit images
         run: |
