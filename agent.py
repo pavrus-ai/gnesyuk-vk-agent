@@ -18,7 +18,7 @@ MIN_BRIGHTNESS = 90
 def log(msg):
     print(msg, flush=True)
 
-log("Версия ℹ️ vk-agent v6 (книги → ВК: пост + яркая картина без людей)")
+log("Версия ℹ️ vk-agent v7 (книги → ВК: обрезка водяного знака pollinations снизу)")
 
 def _extract(r):
     try: return r["choices"][0]["message"]["content"].strip()
@@ -110,7 +110,7 @@ def build_scene(post):
     return ai_text(prompt, minlen=30)
 
 # ============================================================
-# КАРТИНКИ
+# КАРТИНКИ + v7: ОБРЕЗКА ВОДЯНОГО ЗНАКА
 # ============================================================
 
 def image_stats(img_bytes):
@@ -123,6 +123,21 @@ def image_stats(img_bytes):
         return True, sum(px) / len(px)
     except Exception:
         return False, 0.0
+
+def strip_watermark(img_bytes):
+    """v7: срезаем нижнюю полосу кадра (9%) — там логотип pollinations.ai и тех.надписи."""
+    try:
+        im = Image.open(io.BytesIO(img_bytes))
+        w, h = im.size
+        cut = int(h * 0.09)
+        im = im.crop((0, 0, w, h - cut))
+        buf = io.BytesIO()
+        im.convert("RGB").save(buf, "JPEG", quality=90)
+        log(f"✂️ Водяной знак: срезана нижняя полоса {cut}px (было {w}x{h}, стало {im.size[0]}x{im.size[1]})")
+        return buf.getvalue()
+    except Exception as e:
+        log(f"⚠️ strip_watermark: {e}")
+        return img_bytes
 
 def download_image(scene_text, seed):
     clean_img = "".join(c for c in scene_text if c.isalnum() or c.isspace() or c in ".,-")[:220].strip()
@@ -145,7 +160,7 @@ def download_image(scene_text, seed):
             log(f"⚠️ Слишком тёмная картинка (seed={seed}) — отбракована")
             return None
         log(f"✅ Картинка: {len(r.content)} байт (seed={seed})")
-        return r.content
+        return strip_watermark(r.content)   # v7: сразу убираем знак
     except Exception as e:
         log(f"⚠️ Ошибка скачивания картинки (seed={seed}): {e}")
         return None
@@ -260,9 +275,9 @@ def main():
         if candidates:
             candidates.sort(reverse=True)
             pick = candidates[0][1]
-            log(f"⚠️ Генерация не удалась — беру яркую прежнюю картинку {pick}")
+            log(f"⚠️ Генерация не удалась — беру прежнюю картинку {pick} и срезаю знак")
             with open(pick, "rb") as f:
-                img_bytes = f.read()
+                img_bytes = strip_watermark(f.read())   # v7: старые файлы тоже чистим
         else:
             log("⚠️ Нет ни свежей, ни подходящей старой картинки")
 
@@ -272,7 +287,7 @@ def main():
     vk_post_wall(caption, att)
 
     log("=" * 50)
-    log("✅ FINISH: пост о книге → ВК!" + (" (с картинкой)" if att else " (БЕЗ картинки!)"))
+    log("✅ FINISH: пост о книге → ВК!" + (" (с картинкой без знака)" if att else " (БЕЗ картинки!)"))
     log("=" * 50)
 
 if __name__ == "__main__":
