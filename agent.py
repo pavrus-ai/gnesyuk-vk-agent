@@ -11,7 +11,6 @@ CEREBRAS_KEY = os.environ.get("CEREBRAS_KEY", "").strip()
 MISTRAL_KEY = os.environ.get("MISTRAL_KEY", "").strip()
 OPENAI_KEY = os.environ.get("OPENAI_KEY", "").strip()
 HF_TOKEN = os.environ.get("HF_TOKEN", "").strip()
-# GigaChat: ключи НОВОГО аккаунта (те же, что в товарном агенте)
 GIGACHAT_CLIENT_ID = os.environ.get("GIGACHAT_CLIENT_ID1", "").strip()
 GIGACHAT_CLIENT_SECRET = os.environ.get("GIGACHAT_CLIENT_SECRET1", "").strip()
 VK_TOKEN = os.environ.get("VK_TOKEN", "").strip()
@@ -35,10 +34,10 @@ GROQ_MODELS = ["meta-llama/llama-4-scout-17b-16e-instruct",
 def log(msg):
     print(msg, flush=True)
 
-log("Версия ℹ️ gnesyuk-vk-agent v11 (тексты: GigaChat → groq llama-4/gpt-oss → cerebras → mistral → openrouter auto → pollinations-text; картинки: gpt-image-1 → HF router → pollinations+обрезка; альбом: photos.save)")
+log("Версия ℹ️ gnesyuk-vk-agent v13 (компактный пост 500-700 симв.; один запрос GigaChat; картинки: pollinations + HF router; альбом: photos.save)")
 
 # ============================================================
-# ИИ-ТЕКСТ: 6 ступеней с диагностикой
+# ИИ-ТЕКСТ: ступени с диагностикой
 # ============================================================
 
 def _extract(r):
@@ -50,10 +49,6 @@ def _err_snippet(r):
     code = e.get("code") or e.get("type") or "?"
     msg = str(e.get("message") or e)
     return f"{code}: {msg[:100]}"
-
-# ------------------------------------------------------------
-# GigaChat
-# ------------------------------------------------------------
 
 _GIGACHAT_TOKEN = None
 _GIGACHAT_TOKEN_EXPIRY = 0
@@ -103,10 +98,6 @@ def ai_gigachat(prompt):
     except Exception as e:
         log(f"⚠️ GigaChat error: {e}")
         return None
-
-# ------------------------------------------------------------
-# Остальные ступени
-# ------------------------------------------------------------
 
 def ai_cerebras(prompt):
     if not CEREBRAS_KEY: return None
@@ -169,7 +160,6 @@ def ai_openrouter_auto(prompt, key, max_tokens):
         return None
 
 def ai_pollinations_text(prompt):
-    """Ступень без ключа: text.pollinations.ai (OpenAI-совместимый эндпоинт)."""
     try:
         r = requests.post(TEXT_POLLINATIONS,
             json={"model": "openai", "temperature": 0.8,
@@ -181,8 +171,8 @@ def ai_pollinations_text(prompt):
         log(f"   ⚠️ pollinations-text: {str(e)[:80]}")
     return None
 
-def ai_text(prompt, minlen=600, rescue_min=200):
-    """Цепочка ступеней; если никто не дал minlen — спасает лучший ответ >= rescue_min."""
+def ai_text(prompt, minlen=200, rescue_min=150):
+    """v13: снижен minlen до 200 для компактного поста."""
     best_res = ""
 
     def take(res, label):
@@ -246,16 +236,16 @@ def trim_text(t, limit):
     return (c[:i+1] if i > limit//2 else c).rstrip()
 
 # ============================================================
-# ТЕКСТЫ ПОСТОВ
+# ТЕКСТЫ ПОСТОВ (v13: компактные 500-700 симв.)
 # ============================================================
 
 def build_vk_post(book):
     t, a, s = book["title"], book["about"], book["series"]
     prompt = (f"Напиши пост для сообщества ВКонтакте о романе Павла Гнесюка «{t}» (серия «{s}»). "
               f"Сюжет: {a}. Требования: 1. ТОЛЬКО русский язык. 2. Первая строка — заголовок ЗАГЛАВНЫМИ "
-              f"буквами, без ** и ##. 3. Текст 800-1000 символов, интригующий, живой, как анонс. "
+              f"буквами, без ** и ##. 3. Текст 500-700 символов, интригующий, живой, как анонс. "
               f"4. Закончи вопросом или крючком.")
-    txt = ai_text(prompt, minlen=300, rescue_min=150)
+    txt = ai_text(prompt, minlen=200, rescue_min=150)
     if not txt:
         log("⚠️ Пост не создан — стандартный текст.")
         txt = f"РОМАН «{t.upper()}»: ИСТОРИЯ, КОТОРАЯ ЗАТЯГИВАЕТ\n\n{a}"
@@ -265,9 +255,9 @@ def build_quote_post(book, day):
     fr = book["fragments"][day % len(book["fragments"])]
     prompt = (f"Напиши пост для ВКонтакте: разбор цитаты из романа Павла Гнесюка «{book['title']}». "
               f"Цитата: «{fr}». Требования: 1. ТОЛЬКО русский язык. 2. Первая строка — заголовок ЗАГЛАВНЫМИ, "
-              f"без ** и ##. 3. 600-900 символов: раскрой смысл цитаты, атмосферу и интригу романа. "
+              f"без ** и ##. 3. 400-600 символов: раскрой смысл цитаты, атмосферу и интригу романа. "
               f"4. Сама цитата должна войти в текст поста.")
-    txt = ai_text(prompt, minlen=250, rescue_min=150)
+    txt = ai_text(prompt, minlen=180, rescue_min=150)
     if not txt:
         log("⚠️ Разбор цитаты не создан — стандартный пост.")
         return build_vk_post(book)
@@ -280,7 +270,7 @@ def build_scene(post):
     return ai_text(prompt, minlen=30, rescue_min=30)
 
 # ============================================================
-# КАРТИНКИ v11: gpt-image-1 → HF router → pollinations+обрезка
+# КАРТИНКИ v13: gpt-image-1 → dall-e-3 (без response_format) → HF router (пропуск при 410) → pollinations
 # ============================================================
 
 def image_stats(img_bytes):
@@ -295,7 +285,6 @@ def image_stats(img_bytes):
         return False, 0.0
 
 def strip_watermark(img_bytes):
-    """Только для pollinations: срезаем нижнюю полосу 9% с логотипом."""
     try:
         im = Image.open(io.BytesIO(img_bytes))
         w, h = im.size
@@ -313,7 +302,6 @@ def openai_image(prompt):
     if not OPENAI_KEY:
         return None
     full = prompt + ", photorealistic, high resolution, no text, no logos, no watermark"
-    # 1) gpt-image-1 (новый API: без response_format)
     try:
         r = requests.post("https://api.openai.com/v1/images/generations",
             headers={"Authorization": f"Bearer {OPENAI_KEY}", "Content-Type": "application/json"},
@@ -329,51 +317,41 @@ def openai_image(prompt):
             log(f"⚠️ OpenAI gpt-image-1: {str(r['error'])[:120]}")
     except Exception as e:
         log(f"⚠️ OpenAI gpt-image-1 ошибка: {e}")
-    # 2) dall-e-3 b64
-    try:
-        r = requests.post("https://api.openai.com/v1/images/generations",
-            headers={"Authorization": f"Bearer {OPENAI_KEY}", "Content-Type": "application/json"},
-            json={"model": "dall-e-3", "prompt": full, "n": 1,
-                  "size": "1024x1024", "quality": "standard",
-                  "response_format": "b64_json"}, timeout=120).json()
-        if "error" not in r:
-            b64 = (r.get("data") or [{}])[0].get("b64_json")
-            if b64:
-                data = base64.b64decode(b64)
-                log(f"✅ OpenAI DALL-E 3: картинка {len(data)} байт (без водяного знака)")
-                return data
-        else:
-            log(f"⚠️ OpenAI DALL-E 3: {str(r['error'])[:120]}")
-    except Exception as e:
-        log(f"⚠️ OpenAI ошибка: {e}")
-    # 3) dall-e-3 по url
     try:
         r = requests.post("https://api.openai.com/v1/images/generations",
             headers={"Authorization": f"Bearer {OPENAI_KEY}", "Content-Type": "application/json"},
             json={"model": "dall-e-3", "prompt": full, "n": 1,
                   "size": "1024x1024", "quality": "standard"}, timeout=120).json()
-        url = (r.get("data") or [{}])[0].get("url")
-        if url:
-            img = requests.get(url, timeout=120).content
+        if "error" in r:
+            log(f"⚠️ OpenAI DALL-E 3: {str(r['error'])[:120]}")
+            return None
+        item = (r.get("data") or [{}])[0]
+        if item.get("b64_json"):
+            data = base64.b64decode(item["b64_json"])
+            log(f"✅ OpenAI DALL-E 3: картинка {len(data)} байт (без водяного знака)")
+            return data
+        if item.get("url"):
+            img = requests.get(item["url"], timeout=120).content
             log(f"✅ OpenAI DALL-E 3 (url): картинка {len(img)} байт")
             return img
     except Exception as e:
-        log(f"⚠️ OpenAI url ошибка: {e}")
+        log(f"⚠️ OpenAI DALL-E 3 ошибка: {e}")
     return None
 
 def hf_image(prompt):
-    """HF FLUX через НОВЫЙ адрес router.huggingface.co (старый умер по DNS)."""
     if not HF_TOKEN:
         return None
     full = prompt + ", photorealistic, high resolution, no text, no logos, no watermark"
-    bases = ["https://router.huggingface.co/hf-inference/models/",
-             "https://api-inference.huggingface.co/models/"]
+    bases = ["https://router.huggingface.co/hf-inference/models/"]
     for base in bases:
         for mdl in ("black-forest-labs/FLUX.1-schnell", "black-forest-labs/FLUX.1-dev"):
             try:
                 r = requests.post(base + mdl,
                     headers={"Authorization": f"Bearer {HF_TOKEN}"},
-                    json={"inputs": full}, timeout=120)
+                    json={"inputs": full}, timeout=60)
+                if r.status_code == 410:
+                    log(f"⚠️ HF {mdl}: 410 модель устарела — HF пропускаем")
+                    return None
                 if r.status_code == 200 and r.headers.get("Content-Type", "").startswith("image/"):
                     log(f"✅ HF {mdl}: картинка {len(r.content)} байт (без водяного знака)")
                     return r.content
@@ -394,7 +372,6 @@ def pollinations_image(scene, seed):
         return None
 
 def download_image(scene_text, seed):
-    """Цепочка: gpt-image-1 → HF FLUX (router) → pollinations (+обрезка знака)."""
     clean_img = "".join(c for c in scene_text if c.isalnum() or c.isspace() or c in ".,-")[:220].strip()
     p = ("Wide-angle cinematic landscape photograph, absolutely NO people, NO faces, NO portraits, "
          "bright vivid saturated colors, high contrast, warm golden daylight, crisp sharp details. "
@@ -437,7 +414,7 @@ def convert_to_jpeg(img_bytes):
         return img_bytes
 
 # ============================================================
-# ВК v11: путь 1 (wall server) → путь 2 (альбом, метод photos.save)
+# ВК: путь 1 (wall server) → путь 2 (альбом, photos.save)
 # ============================================================
 
 def vk_call(method, params=None, token=None):
