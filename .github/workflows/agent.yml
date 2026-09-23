@@ -6,7 +6,7 @@ on:
   workflow_dispatch:            # ручной запуск
 
 permissions:
-  contents: write               # нужно для коммита картинок и push
+  contents: write               # нужно для коммита картинок и кэша вложения
 
 jobs:
   post:
@@ -23,7 +23,7 @@ jobs:
       - name: Run VK agent
         run: python agent.py
         env:
-          # --- ВКонтакте (v16: юзер-токен для загрузки фото, групповой для поста) ---
+          # --- ВКонтакте (v18: юзер-токен для загрузки фото, групповой для поста) ---
           VK_TOKEN: ${{ secrets.VK_TOKEN }}
           VK_USER_TOKEN: ${{ secrets.VK_USER_TOKEN }}
           VK_GROUP_ID: ${{ secrets.VK_GROUP_ID }}
@@ -37,14 +37,14 @@ jobs:
           OPENROUTER_KEY2: ${{ secrets.OPENROUTER_KEY2 }}
           CEREBRAS_KEY: ${{ secrets.CEREBRAS_KEY }}
           MISTRAL_KEY: ${{ secrets.MISTRAL_KEY }}
-          # --- Картинки ---
+          # --- Картинки (OpenAI 1024x1024 low = $0.011/шт) ---
           OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
 
       - name: Commit images
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add img/ vk_album.json 2>/dev/null || true
+          git add img/ vk_album.json vk_att.json 2>/dev/null || true
           if ! git diff --quiet --cached; then
             git commit -m "chore: vk images [skip ci]"
             git pull --rebase || true
