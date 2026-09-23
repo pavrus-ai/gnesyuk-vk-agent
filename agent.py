@@ -19,6 +19,7 @@ VK_GROUP_ID = os.environ.get("VK_GROUP_ID", "").strip().lstrip("-")
 VK_API = "https://api.vk.com/method/"
 VK_V = "5.131"
 ALBUM_CACHE = "vk_album.json"
+ATT_CACHE = "vk_att.json"
 POLLINATIONS_API = "https://image.pollinations.ai/prompt/"
 TAGS = "#ПавелГнесюк #книги #авторскийблог #писатель"
 RU = "\n\nВАЖНО: Пиши ТОЛЬКО на русском языке."
@@ -56,7 +57,7 @@ def head_style(day, shift=0):
 def log(msg):
     print(msg, flush=True)
 
-log("Версия ℹ️ gnesyuk-vk-agent v16 (загрузка фото = блок v11 дословно: юзер-токен, 2 раунда, 2 набора параметров, альбом-фолбэк; крючки v14; светлые заманухи; доводка поста до 700)")
+log("Версия ℹ️ gnesyuk-vk-agent v18 (OpenAI 1024x1024 low = $0.011; pollinations 1024x576; JPEG q85+optimize ~60КБ; остальное как v17: крючки, кэш вложения, антифлуд)")
 
 # ============================================================
 # ИИ-ТЕКСТ: ступени с диагностикой
@@ -278,7 +279,7 @@ def trim_text(t, limit):
     return (c[:i+1] if i > limit//2 else c).rstrip()
 
 # ============================================================
-# ПОСТЫ v16: эмоциональный крючок → эскалация → конкретика → обрыв
+# ПОСТЫ: эмоциональный крючок → эскалация → конкретика → обрыв
 # ============================================================
 
 def build_post(book, day):
@@ -325,7 +326,7 @@ def build_scene(post):
     return ai_text(prompt, minlen=30, rescue_min=30)
 
 # ============================================================
-# КАРТИНКИ: светлая замануха 16:9 + авто-осветление + обрезка знака
+# КАРТИНКИ v18: OpenAI 1024x1024 low / pollinations 1024x576 / JPEG q85
 # ============================================================
 
 def image_stats(img_bytes):
@@ -382,19 +383,21 @@ def strip_watermark(img_bytes):
         return img_bytes
 
 def openai_image(prompt):
+    """v18: 1024x1024 + quality low = $0.011 за кадр (лента ВК больше ~933px не показывает)."""
     if not OPENAI_KEY:
         return None
     full = prompt + ", photorealistic, high resolution, no text, no logos, no watermark"
     try:
         r = requests.post("https://api.openai.com/v1/images/generations",
             headers={"Authorization": f"Bearer {OPENAI_KEY}", "Content-Type": "application/json"},
-            json={"model": "gpt-image-1", "prompt": full, "n": 1, "size": "1536x1024"},
+            json={"model": "gpt-image-1", "prompt": full, "n": 1,
+                  "size": "1024x1024", "quality": "low"},
             timeout=180).json()
         if "error" not in r:
             b64 = (r.get("data") or [{}])[0].get("b64_json")
             if b64:
                 data = base64.b64decode(b64)
-                log(f"✅ OpenAI gpt-image-1: картинка {len(data)} байт (без водяного знака)")
+                log(f"✅ OpenAI gpt-image-1 (1024x1024 low, $0.011): картинка {len(data)} байт")
                 return data
         else:
             log(f"⚠️ OpenAI gpt-image-1: {str(r['error'])[:120]}")
@@ -404,7 +407,7 @@ def openai_image(prompt):
 
 def pollinations_image(scene, seed):
     url = (POLLINATIONS_API + requests.utils.quote(scene) +
-           f"?nologo=true&seed={seed}&model=flux&width=1280&height=720")
+           f"?nologo=true&seed={seed}&model=flux&width=1024&height=576")
     try:
         r = requests.get(url, timeout=240)
         r.raise_for_status()
@@ -442,16 +445,20 @@ def download_image(scene_text, seed):
     return None
 
 def convert_to_jpeg(img_bytes):
+    """v18: максимум 1024px по стороне, quality 85 + optimize → файл ~60 КБ."""
     try:
         im = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        im.thumbnail((1024, 1024))
         buf = io.BytesIO()
-        im.save(buf, "JPEG", quality=92)
-        return buf.getvalue()
+        im.save(buf, "JPEG", quality=85, optimize=True)
+        data = buf.getvalue()
+        log(f"🖼 Финал: {im.size[0]}x{im.size[1]}, {len(data)} байт")
+        return data
     except Exception:
         return img_bytes
 
 # ============================================================
-# ВК v16: загрузочный блок v11 ДОСЛОВНО (юзер-токен, 2 раунда, альбом-фолбэк)
+# ВК v18: кэш вложения на день + антифлуд-пауза 30 сек
 # ============================================================
 
 def vk_call(method, params=None, token=None):
@@ -468,6 +475,23 @@ def vk_call(method, params=None, token=None):
         return None
     return r.get("response")
 
+def vk_load_att_cache(day):
+    try:
+        d = json.load(open(ATT_CACHE, encoding="utf-8"))
+        if d.get("day") == day and d.get("att"):
+            log(f"ℹ️ ВК: беру вложение из кэша за сегодня: {d['att']}")
+            return d["att"]
+    except Exception:
+        pass
+    return None
+
+def vk_save_att_cache(day, att):
+    try:
+        json.dump({"day": day, "att": att}, open(ATT_CACHE, "w", encoding="utf-8"))
+        log(f"💾 ВК: вложение закэшировано в {ATT_CACHE} (повторные запуски сегодня не будут грузить фото)")
+    except Exception as e:
+        log(f"⚠️ vk_att cache: {e}")
+
 def vk_get_album_id():
     env_id = os.environ.get("VK_ALBUM_ID", "").strip()
     if env_id.isdigit():
@@ -481,8 +505,6 @@ def vk_get_album_id():
     return None
 
 def vk_upload_via_album(img_bytes):
-    """Путь 2 из v11: альбом группы. photos.getUploadServer + photos.save —
-    работает даже групповым токеном (в отличие от getWallUploadServer)."""
     album = vk_get_album_id()
     if not album:
         log("ℹ️ ВК: путь 2 пропущен (нет VK_ALBUM_ID / vk_album.json)")
@@ -516,7 +538,6 @@ def vk_upload_via_album(img_bytes):
     return None
 
 def vk_upload_photo(img_bytes):
-    """Путь 1 из v11: стена. Юзер-токен, 2 раунда × 2 набора параметров, пауза 15 сек."""
     tok = VK_USER_TOKEN or VK_TOKEN
     if not tok:
         log("⚠️ ВК: нет ни VK_USER_TOKEN, ни VK_TOKEN — пост без фото")
@@ -552,8 +573,8 @@ def vk_upload_photo(img_bytes):
                     log(f"✅ ВК: картинка загружена (wall server, юзер-токен) → {att}")
                     return att
             if rnd == 0:
-                log("⏳ ВК: пауза 15 сек перед повтором (раунд 1/2)")
-                time.sleep(15)
+                log("⏳ ВК: пауза 30 сек перед повтором (антифлуд, раунд 1/2)")
+                time.sleep(30)
     att = vk_upload_via_album(img_bytes)
     if att:
         log(f"✅ ВК: картинка загружена (через альбом группы) → {att}")
@@ -632,7 +653,13 @@ def main():
         else:
             log("⚠️ Нет ни свежей, ни подходящей старой картинки")
 
-    att = vk_upload_photo(img_bytes) if img_bytes else None
+    att = None
+    if img_bytes:
+        att = vk_load_att_cache(day)
+        if not att:
+            att = vk_upload_photo(img_bytes)
+            if att:
+                vk_save_att_cache(day, att)
     if not att:
         log("⚠️ Картинку загрузить не удалось — пост выйдет без картинки")
     res = vk_post_wall(caption, att)
