@@ -41,7 +41,9 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f img/ vk_album.json vk_att.json 2>/dev/null || true
+          git add -f img/ || true
+          git add -f vk_album.json || true
+          git add -f vk_att.json || true
           git commit -m "chore: vk images [skip ci]" || echo "ℹ️ Нет изменений для коммита"
           git pull --rebase || true
           git push || echo "⚠️ push не удался — закоммитим в следующий раз"
