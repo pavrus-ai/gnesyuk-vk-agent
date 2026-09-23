@@ -2,11 +2,11 @@ name: VK Post Agent
 
 on:
   schedule:
-    - cron: "0 8 * * *"        # ежедневно в 08:00 UTC
-  workflow_dispatch:            # ручной запуск
+    - cron: "0 8 * * *"
+  workflow_dispatch:
 
 permissions:
-  contents: write               # нужно для коммита картинок и кэша вложения
+  contents: write
 
 jobs:
   post:
@@ -23,12 +23,10 @@ jobs:
       - name: Run VK agent
         run: python agent.py
         env:
-          # --- ВКонтакте (v18: юзер-токен для загрузки фото, групповой для поста) ---
           VK_TOKEN: ${{ secrets.VK_TOKEN }}
           VK_USER_TOKEN: ${{ secrets.VK_USER_TOKEN }}
           VK_GROUP_ID: ${{ secrets.VK_GROUP_ID }}
           VK_ALBUM_ID: ${{ secrets.VK_ALBUM_ID }}
-          # --- ИИ-ступени текстов ---
           GIGACHAT_CLIENT_ID1: ${{ secrets.GIGACHAT_CLIENT_ID1 }}
           GIGACHAT_CLIENT_SECRET1: ${{ secrets.GIGACHAT_CLIENT_SECRET1 }}
           GROQ_KEY: ${{ secrets.GROQ_KEY }}
@@ -37,7 +35,6 @@ jobs:
           OPENROUTER_KEY2: ${{ secrets.OPENROUTER_KEY2 }}
           CEREBRAS_KEY: ${{ secrets.CEREBRAS_KEY }}
           MISTRAL_KEY: ${{ secrets.MISTRAL_KEY }}
-          # --- Картинки (OpenAI 1024x1024 low = $0.011/шт) ---
           OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
 
       - name: Commit images
@@ -45,13 +42,8 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -f img/ vk_album.json vk_att.json 2>/dev/null || true
-          if ! git diff --quiet --cached; then
-          if ! git diff --quiet --cached; then
-            git commit -m "chore: vk images [skip ci]"
-            git pull --rebase || true
-            git push || echo "⚠️ push не удался — картинку закоммитим в следующий раз"
-          else
-            echo "ℹ️ Нет изменений для коммита"
-          fi
+          git commit -m "chore: vk images [skip ci]" || echo "ℹ️ Нет изменений для коммита"
+          git pull --rebase || true
+          git push || echo "⚠️ push не удался — закоммитим в следующий раз"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
