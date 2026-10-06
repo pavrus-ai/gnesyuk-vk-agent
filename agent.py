@@ -15,12 +15,19 @@ GIGACHAT_CLIENT_SECRET = os.environ.get("GIGACHAT_CLIENT_SECRET1", "").strip()
 VK_TOKEN = os.environ.get("VK_TOKEN", "").strip()
 VK_USER_TOKEN = os.environ.get("VK_USER_TOKEN", "").strip()
 VK_GROUP_ID = os.environ.get("VK_GROUP_ID", "").strip().lstrip("-")
+# v20: Telegram и MAX
+TG_BOT = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+TG_CHAT = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+MAX_TOKEN = os.environ.get("MAX_BOT_TOKEN", "").strip()
+MAX_CHAT = os.environ.get("MAX_CHAT_ID", "").strip()
+LINK_IN_TG = os.environ.get("LINK_IN_TG", "1").strip() != "0"
 
 VK_API = "https://api.vk.com/method/"
 VK_V = "5.131"
 ALBUM_CACHE = "vk_album.json"
 ATT_CACHE = "vk_att.json"
 POLLINATIONS_API = "https://image.pollinations.ai/prompt/"
+MAX_APIS = ["https://platform-api.max.ru", "https://platform-api2.max.ru", "https://botapi.max.ru"]
 TAGS = "#ПавелГнесюк #книги #авторскийблог #писатель"
 RU = "\n\nВАЖНО: Пиши ТОЛЬКО на русском языке."
 
@@ -57,12 +64,11 @@ def head_style(day, shift=0):
 def log(msg):
     print(msg, flush=True)
 
-log("Версия ℹ️ gnesyuk-vk-agent v19 (OpenAI 1024x1024 low $0.011 + ЛИЦА разрешены; pollinations — силуэты со спины; остальное как v18: крючки, кэш вложения, антифлуд)")
+log("Версия ℹ️ gnesyuk-vk-agent v20 (ВК: ретраи флуд-контроля 15/30/45/60с + ретраи POST в альбом; НОВОЕ: книги в TG и MAX)")
 
 # ============================================================
 # ИИ-ТЕКСТ: ступени с диагностикой
 # ============================================================
-
 def _extract(r):
     try: return r["choices"][0]["message"]["content"].strip()
     except (KeyError, IndexError, TypeError): return None
@@ -196,7 +202,6 @@ def ai_pollinations_text(prompt):
 
 def ai_text(prompt, minlen=300, rescue_min=200):
     best_res = ""
-
     def take(res, label):
         nonlocal best_res
         if not res:
@@ -208,7 +213,6 @@ def ai_text(prompt, minlen=300, rescue_min=200):
         if len(res) > len(best_res):
             best_res = res
         return None
-
     if not GIGACHAT_CLIENT_ID:
         log("⚠️ gigachat: GIGACHAT_CLIENT_ID1 не передан в env!")
     else:
@@ -242,7 +246,6 @@ def ai_text(prompt, minlen=300, rescue_min=200):
     log("🔄 Попытка: pollinations-text (без ключа)...")
     r = take(ai_pollinations_text(prompt), "pollinations-text")
     if r: return r
-
     if best_res and len(best_res) >= rescue_min:
         log(f"ℹ️ Никто не дал {minlen} симв. — беру лучший кандидат ({len(best_res)} симв.)")
         return best_res
@@ -281,7 +284,6 @@ def trim_text(t, limit):
 # ============================================================
 # ПОСТЫ: крючок → эскалация → конкретика → обрыв
 # ============================================================
-
 def build_post(book, day):
     t, a, s = book["title"], book["about"], book["series"]
     style = head_style(day)
@@ -319,8 +321,6 @@ def build_quote_post(book, day):
     return fix_headline(clean_txt(txt))
 
 def build_scene(post):
-    """v19: сцена может включать героя с эмоцией/лицом — OpenAI это умеет;
-    pollinations-страховка всё равно уйдёт в силуэт со спины (см. download_image)."""
     prompt = (f"Из текста ниже выбери ОДНУ самую интригующую сцену и опиши её в 1-2 предложениях: "
               f"драматичный момент с героем (допустимы эмоция, пол-оборота, лицо) ИЛИ загадочный "
               f"предмет/место, ощущение опасности или тайны. Без толп людей.\n\n"
@@ -330,7 +330,6 @@ def build_scene(post):
 # ============================================================
 # КАРТИНКИ v19: OpenAI 1024x1024 low + лица; pollinations — силуэты
 # ============================================================
-
 def image_stats(img_bytes):
     try:
         im = Image.open(io.BytesIO(img_bytes))
@@ -417,8 +416,6 @@ def pollinations_image(scene, seed):
         return None
 
 def download_image(scene_text, seed):
-    """v19: два промпта. OpenAI — люди и лица разрешены (анатомия под защитой);
-    pollinations — только силуэты со спины (страховка от несуразностей)."""
     clean_img = "".join(c for c in scene_text if c.isalnum() or c.isspace() or c in ".,-")[:220].strip()
     base = ("Eye-catching cinematic book-promo artwork, BRIGHT and LUMINOUS: golden-hour sunlight or "
             "glowing practical light filling the whole scene, vivid saturated colors, high contrast "
@@ -461,22 +458,32 @@ def convert_to_jpeg(img_bytes):
         return img_bytes
 
 # ============================================================
-# ВК v19: кэш вложения на день + антифлуд-пауза 30 сек
+# ВК v20: vk_call с ретраями флуд-контроля
 # ============================================================
-
-def vk_call(method, params=None, token=None):
+def vk_call(method, params=None, token=None, retries=4):
+    """v20: error 9 (Flood control) больше не приговор — ждём 15/30/45/60 сек и повторяем."""
     p = dict(params or {})
     p["access_token"] = token or VK_TOKEN
     p["v"] = VK_V
-    try:
-        r = requests.post(VK_API + method, data=p, timeout=30).json()
-    except Exception as e:
-        log(f"⚠️ VK {method}: {e}")
-        return None
-    if "error" in r:
-        log(f"⚠️ VK {method}: {str(r.get('error'))[:150]}")
-        return None
-    return r.get("response")
+    for attempt in range(retries):
+        try:
+            r = requests.post(VK_API + method, data=p, timeout=30).json()
+        except Exception as e:
+            log(f"⚠️ VK {method}: сеть {e}")
+            time.sleep(5 * (attempt + 1))
+            continue
+        if "error" in r:
+            err = r["error"]
+            if err.get("error_code") == 9:
+                delay = 15 * (attempt + 1)
+                log(f"⏳ VK Flood control на {method}: жду {delay} сек (попытка {attempt+1}/{retries})...")
+                time.sleep(delay)
+                continue
+            log(f"⚠️ VK {method}: {str(err)[:150]}")
+            return None
+        return r.get("response")
+    log(f"❌ VK {method}: флуд-контроль не отпустил за {retries} попыток")
+    return None
 
 def vk_load_att_cache(day):
     try:
@@ -491,7 +498,7 @@ def vk_load_att_cache(day):
 def vk_save_att_cache(day, att):
     try:
         json.dump({"day": day, "att": att}, open(ATT_CACHE, "w", encoding="utf-8"))
-        log(f"💾 ВК: вложение закэшировано в {ATT_CACHE} (повторные запуски сегодня не будут грузить фото)")
+        log(f"💾 ВК: вложение закэшировано в {ATT_CACHE}")
     except Exception as e:
         log(f"⚠️ vk_att cache: {e}")
 
@@ -519,14 +526,22 @@ def vk_upload_via_album(img_bytes):
                       {"group_id": VK_GROUP_ID, "album_id": album}, token=tok)
         if not srv or "upload_url" not in srv:
             continue
-        try:
-            r = requests.post(srv["upload_url"],
-                              files={"file1": ("cover.jpg", img_bytes, "image/jpeg")},
-                              timeout=120).json()
-        except Exception:
-            continue
-        if not r.get("hash") or not r.get("photos_list"):
-            log(f"⚠️ ВК upload в альбом: пустой ответ: {str(r)[:120]}")
+        # v20: до 3 попыток POST, если photos_list пустой (флуд на upload-сервере)
+        r = None
+        for attempt in (1, 2, 3):
+            try:
+                r = requests.post(srv["upload_url"],
+                                  files={"file1": ("cover.jpg", img_bytes, "image/jpeg")},
+                                  timeout=120).json()
+            except Exception as e:
+                log(f"⚠️ ВК upload в альбом: ошибка POST ({attempt}): {e}")
+                time.sleep(10 * attempt)
+                continue
+            if r.get("hash") and r.get("photos_list"):
+                break
+            log(f"⚠️ ВК upload в альбом: пустой photos_list ({attempt}) — жду и повторяю")
+            time.sleep(10 * attempt)
+        else:
             continue
         saved = vk_call("photos.save",
                         {"group_id": VK_GROUP_ID, "album_id": album,
@@ -581,8 +596,7 @@ def vk_upload_photo(img_bytes):
     att = vk_upload_via_album(img_bytes)
     if att:
         log(f"✅ ВК: картинка загружена (через альбом группы) → {att}")
-        return att
-    return None
+    return att
 
 def vk_post_wall(text, attachment=None):
     params = {"owner_id": "-" + VK_GROUP_ID, "message": text, "from_group": 1}
@@ -598,9 +612,163 @@ def vk_post_wall(text, attachment=None):
     return None
 
 # ============================================================
-# ГЛАВНАЯ ЛОГИКА
+# v20: TELEGRAM
 # ============================================================
+def tg_post(img_bytes, caption):
+    if not TG_BOT or not TG_CHAT:
+        log("ℹ️ TG не настроен (TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID) — пропуск")
+        return False
+    cap = caption
+    if len(cap) > 1000:
+        cut = cap.rfind(".", 0, 1000)
+        cap = cap[:cut+1] if cut > 800 else cap[:1000]
+        log(f"✂️ TG: подписка обрезана до {len(cap)} симв. (лимит 1024)")
+    try:
+        if img_bytes:
+            r = requests.post(f"https://api.telegram.org/bot{TG_BOT}/sendPhoto",
+                data={"chat_id": TG_CHAT, "caption": cap},
+                files={"photo": ("cover.jpg", img_bytes, "image/jpeg")}, timeout=120).json()
+        else:
+            r = requests.post(f"https://api.telegram.org/bot{TG_BOT}/sendMessage",
+                data={"chat_id": TG_CHAT, "text": cap}, timeout=60).json()
+        if r.get("ok"):
+            log(f"✅ TG: пост о книге отправлен в {TG_CHAT}")
+            return True
+        log(f"⚠️ TG: {str(r)[:200]}")
+    except Exception as e:
+        log(f"⚠️ TG ошибка: {e}")
+    return False
 
+# ============================================================
+# v20: MAX
+# ============================================================
+def _max_headers():
+    return ({"Authorization": f"Bearer {MAX_TOKEN}"}, {"Authorization": MAX_TOKEN})
+
+def _max_call(method, params=None, payload=None):
+    for base in MAX_APIS:
+        for hdr in _max_headers():
+            try:
+                r = requests.post(f"{base}/{method}", headers=hdr, params=params,
+                                  json=payload, timeout=60, verify=False)
+                try:
+                    j = r.json()
+                except Exception:
+                    continue
+                if isinstance(j, dict) and j.get("code") == "verify.token":
+                    continue
+                log(f"ℹ️ MAX {method} → {base}")
+                return j
+            except Exception:
+                continue
+    return None
+
+def _max_get(method, params=None):
+    for base in MAX_APIS:
+        for hdr in _max_headers():
+            try:
+                r = requests.get(f"{base}/{method}", headers=hdr, params=params,
+                                 timeout=30, verify=False)
+                try:
+                    j = r.json()
+                except Exception:
+                    continue
+                if isinstance(j, dict) and j.get("code") == "verify.token":
+                    continue
+                return j
+            except Exception:
+                continue
+    return None
+
+def max_collect_ids():
+    ids, user_ids = [], []
+    u = _max_get("updates")
+    if isinstance(u, dict):
+        ups = u.get("updates") or []
+        log(f"ℹ️ MAX /updates: событий = {len(ups)}")
+        for up in ups:
+            t = up.get("update_type") or ""
+            if t in ("bot_added", "bot_started", "chat_added", "bot_added_to_chat"):
+                chat = up.get("chat") or ((up.get("message") or {}).get("recipient")) or {}
+                cid = chat.get("chat_id") or chat.get("id") or up.get("chat_id")
+                if cid and cid not in ids:
+                    ids.insert(0, cid)
+            rec = ((up.get("message") or {}).get("recipient")) or {}
+            cid = rec.get("chat_id")
+            if cid and cid not in ids:
+                ids.append(cid)
+            cid2 = up.get("chat_id")
+            if cid2 and cid2 not in ids:
+                ids.append(cid2)
+            uid = up.get("user_id") or ((up.get("message") or {}).get("user_id"))
+            if uid and uid not in user_ids:
+                user_ids.append(uid)
+    return ids, user_ids
+
+def max_upload(img_bytes, chat_val):
+    u = _max_call("uploads", params={"type": "image", "chat_id": chat_val})
+    up_url = (u or {}).get("url") if isinstance(u, dict) else None
+    if not up_url:
+        log(f"⚠️ MAX uploads: нет url: {str(u)[:150]}")
+        return None
+    try:
+        ru = requests.post(up_url, files={"data": ("cover.jpg", img_bytes, "image/jpeg")},
+                           timeout=120, verify=False)
+        rj = {}
+        try:
+            rj = ru.json()
+        except Exception:
+            pass
+        tok = None
+        if isinstance(rj, dict):
+            ph = rj.get("photos") or {}
+            if isinstance(ph, dict):
+                for v in ph.values():
+                    if isinstance(v, dict) and v.get("token"):
+                        tok = v["token"]
+                        break
+            tok = tok or rj.get("token") or rj.get("file")
+        if tok:
+            log("✅ MAX: фото загружено, токен вложения получен")
+            return [{"type": "image", "payload": {"token": tok}}]
+        log(f"⚠️ MAX upload: токен не найден в ответе: {str(rj)[:150]}")
+    except Exception as e:
+        log(f"⚠️ MAX upload: {str(e)[:100]}")
+    return None
+
+def max_post(img_bytes, text):
+    if not MAX_TOKEN:
+        log("ℹ️ MAX_BOT_TOKEN не задан — MAX пропущен")
+        return False
+    ids, user_ids = max_collect_ids()
+    variants = list(ids)
+    if MAX_CHAT:
+        sec = int(MAX_CHAT) if MAX_CHAT.lstrip("-").isdigit() else MAX_CHAT
+        if sec not in variants:
+            variants.append(sec)
+        if str(MAX_CHAT) not in variants:
+            variants.append(str(MAX_CHAT))
+    if not variants:
+        log("⚠️ MAX: ни одного chat_id из событий и секрета")
+        return False
+    log(f"ℹ️ MAX: кандидаты chat_id: {variants}")
+    att = max_upload(img_bytes, variants[0]) if img_bytes else None
+    for chat_val in variants:
+        payload = {"text": text[:4000]}
+        if att:
+            payload["attachments"] = att
+        r = _max_call("messages", params={"chat_id": chat_val}, payload=payload)
+        ok = isinstance(r, dict) and (r.get("success") is True or isinstance(r.get("message"), dict))
+        if ok:
+            m = r.get("message") or {}
+            log(f"✅ MAX: пост о книге отправлен (chat_id={chat_val}, id={m.get('id')})")
+            return True
+        log(f"⚠️ MAX: chat_id={chat_val} → {str(r)[:150]}")
+    return False
+
+# ============================================================
+# ГЛАВНАЯ ЛОГИКА v20
+# ============================================================
 def main():
     if not VK_TOKEN or not VK_GROUP_ID:
         log("⚠️ Нет VK_TOKEN/VK_GROUP_ID — пропуск ВК")
@@ -610,18 +778,18 @@ def main():
     book = books[day % len(books)]
     log(f"📚 Книга дня: «{book['title']}» ({book['series']})")
     log(f"🎣 Эмоциональный крючок сегодня: {head_style(day)}")
-
     if day % 3 == 0 and book.get("fragments"):
         post = build_quote_post(book, day)
     else:
         post = build_post(book, day)
     if len(post) > 750:
         post = trim_text(post, 700)
-        log(f"✂️ Пост довёден до 700: {len(post)} симв.")
+        log(f"✂️ Пост доведён до 700: {len(post)} симв.")
     log(f"✂️ Крючок поста: {post.split(chr(10))[0][:150]}")
     log(f"📝 Длина поста: {len(post)} симв.")
+
     link = book.get("url", "")
-    link_part = f"\n\n📖 Читайте на ЛитРес: {link}" if link else ""
+    link_part = f"\n\n📖 Читайте на ЛитРес: {link}" if (link and LINK_IN_TG) else ""
     caption = trim_text(post, 4000 - len(link_part) - len(TAGS) - 2) + link_part + "\n\n" + TAGS
 
     scene = build_scene(post)
@@ -634,7 +802,6 @@ def main():
         if img_bytes:
             break
         log(f"⏳ Попытка {attempt + 1} не удалась, пробуем снова...")
-
     if img_bytes:
         img_bytes = convert_to_jpeg(img_bytes)
         os.makedirs("img", exist_ok=True)
@@ -664,15 +831,18 @@ def main():
             if att:
                 vk_save_att_cache(day, att)
     if not att:
-        log("⚠️ Картинку загрузить не удалось — пост выйдет без картинки")
-    res = vk_post_wall(caption, att)
+        log("⚠️ Картинку загрузить не удалось — ВК-пост выйдет без картинки")
+
+    ok_vk = bool(vk_post_wall(caption, att))
+    ok_tg = tg_post(img_bytes, caption)
+    ok_max = max_post(img_bytes, caption)
 
     log("=" * 50)
-    if res:
-        log("✅ FINISH: пост о книге → ВК!" + (" (с картинкой)" if att else " (БЕЗ картинки!)"))
-    else:
-        log("❌ FINISH: пост не опубликован")
+    log(f"✅ FINISH книги: ВК={'ДА' if ok_vk else 'НЕТ'}, TG={'ДА' if ok_tg else 'НЕТ'}, "
+        f"MAX={'ДА' if ok_max else 'НЕТ'}" + ("" if att else " (ВК без картинки)"))
     log("=" * 50)
+    if not (ok_vk or ok_tg or ok_max):
+        raise SystemExit(1)
 
 if __name__ == "__main__":
     try:
