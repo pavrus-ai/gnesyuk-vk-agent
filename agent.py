@@ -15,7 +15,6 @@ GIGACHAT_CLIENT_SECRET = os.environ.get("GIGACHAT_CLIENT_SECRET1", "").strip()
 VK_TOKEN = os.environ.get("VK_TOKEN", "").strip()
 VK_USER_TOKEN = os.environ.get("VK_USER_TOKEN", "").strip()
 VK_GROUP_ID = os.environ.get("VK_GROUP_ID", "").strip().lstrip("-")
-# v20: Telegram и MAX
 TG_BOT = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 TG_CHAT = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
 MAX_TOKEN = os.environ.get("MAX_BOT_TOKEN", "").strip()
@@ -64,10 +63,10 @@ def head_style(day, shift=0):
 def log(msg):
     print(msg, flush=True)
 
-log("Версия ℹ️ gnesyuk-vk-agent v20 (ВК: ретраи флуд-контроля 15/30/45/60с + ретраи POST в альбом; НОВОЕ: книги в TG и MAX)")
+log("Версия ℹ️ gnesyuk-vk-agent v21 (загрузка картинки «музыкальным путём»: owner_id + user-токен, мягкий антифлуд 60/120/240с; книги в ВК + TG + MAX)")
 
 # ============================================================
-# ИИ-ТЕКСТ: ступени с диагностикой
+# ИИ-ТЕКСТ
 # ============================================================
 def _extract(r):
     try: return r["choices"][0]["message"]["content"].strip()
@@ -328,7 +327,7 @@ def build_scene(post):
     return ai_text(prompt, minlen=30, rescue_min=30)
 
 # ============================================================
-# КАРТИНКИ v19: OpenAI 1024x1024 low + лица; pollinations — силуэты
+# КАРТИНКИ: OpenAI 1024x1024 low + лица; pollinations — силуэты
 # ============================================================
 def image_stats(img_bytes):
     try:
@@ -458,10 +457,10 @@ def convert_to_jpeg(img_bytes):
         return img_bytes
 
 # ============================================================
-# ВК v20: vk_call с ретраями флуд-контроля
+# ВК v21: vk_call + мягкий антифлуд + загрузка «музыкальным путём»
 # ============================================================
 def vk_call(method, params=None, token=None, retries=4):
-    """v20: error 9 (Flood control) больше не приговор — ждём 15/30/45/60 сек и повторяем."""
+    """v21: error 9 (Flood control) пережидается 15/30/45/60 сек."""
     p = dict(params or {})
     p["access_token"] = token or VK_TOKEN
     p["v"] = VK_V
@@ -517,7 +516,7 @@ def vk_get_album_id():
 def vk_upload_via_album(img_bytes):
     album = vk_get_album_id()
     if not album:
-        log("ℹ️ ВК: путь 2 пропущен (нет VK_ALBUM_ID / vk_album.json)")
+        log("ℹ️ ВК: путь альбома пропущен (нет VK_ALBUM_ID / vk_album.json)")
         return None
     for tok in (VK_USER_TOKEN, VK_TOKEN):
         if not tok:
@@ -526,7 +525,6 @@ def vk_upload_via_album(img_bytes):
                       {"group_id": VK_GROUP_ID, "album_id": album}, token=tok)
         if not srv or "upload_url" not in srv:
             continue
-        # v20: до 3 попыток POST, если photos_list пустой (флуд на upload-сервере)
         r = None
         for attempt in (1, 2, 3):
             try:
@@ -552,51 +550,49 @@ def vk_upload_via_album(img_bytes):
             att = f"photo{p['owner_id']}_{p['id']}"
             if p.get("access_key"):
                 att += f"_{p['access_key']}"
+            log(f"✅ ВК: картинка загружена (через альбом группы) → {att}")
             return att
     return None
 
 def vk_upload_photo(img_bytes):
-    tok = VK_USER_TOKEN or VK_TOKEN
+    """v21: музыкальный путь — owner_id + user-токен, 3 попытки с паузами 60/120/240 сек."""
+    tok = VK_USER_TOKEN
     if not tok:
-        log("⚠️ ВК: нет ни VK_USER_TOKEN, ни VK_TOKEN — пост без фото")
+        log("⚠️ ВК: нет VK_USER_TOKEN — загрузка невозможна")
         return None
-    if not VK_USER_TOKEN:
-        log("⚠️ ВК: нет VK_USER_TOKEN — групповым токеном стену грузить нельзя (ошибка 27); "
-            "пробую альбом-фолбэк")
-    else:
-        for rnd in range(2):
-            for params in ({"group_id": VK_GROUP_ID}, {"owner_id": "-" + VK_GROUP_ID}):
-                srv = vk_call("photos.getWallUploadServer", params, token=tok)
-                if not srv or "upload_url" not in srv:
-                    continue
-                try:
-                    r = requests.post(srv["upload_url"],
-                                      files={"photo": ("cover.jpg", img_bytes, "image/jpeg")},
-                                      timeout=120).json()
-                except Exception:
-                    continue
-                if not r.get("photo"):
-                    log(f"⚠️ VK upload вернул пустое photo (раунд {rnd+1}) — флуд")
-                    continue
-                if "server" not in r or "hash" not in r:
-                    continue
-                sp = dict(params)
-                sp.update({"photo": r["photo"], "server": r["server"], "hash": r["hash"]})
-                saved = vk_call("photos.saveWallPhoto", sp, token=tok)
+    owner = "-" + VK_GROUP_ID
+    for attempt in range(3):
+        srv = vk_call("photos.getWallUploadServer", {"owner_id": owner}, token=tok, retries=1)
+        if srv and "upload_url" in srv:
+            r = {}
+            try:
+                r = requests.post(srv["upload_url"],
+                                  files={"photo": ("cover.jpg", img_bytes, "image/jpeg")},
+                                  timeout=120).json()
+            except Exception as e:
+                log(f"⚠️ ВК upload: ошибка POST: {e}")
+            if r.get("photo") and r.get("hash"):
+                saved = vk_call("photos.saveWallPhoto",
+                                {"owner_id": owner, "photo": r["photo"],
+                                 "server": r.get("server", ""), "hash": r.get("hash", "")},
+                                token=tok, retries=2)
                 if saved:
                     p = saved[0]
                     att = f"photo{p['owner_id']}_{p['id']}"
                     if p.get("access_key"):
                         att += f"_{p['access_key']}"
-                    log(f"✅ ВК: картинка загружена (wall server, юзер-токен) → {att}")
+                    log(f"✅ ВК: картинка загружена (музыкальным путём) → {att}")
                     return att
-            if rnd == 0:
-                log("⏳ ВК: пауза 30 сек перед повтором (антифлуд, раунд 1/2)")
-                time.sleep(30)
-    att = vk_upload_via_album(img_bytes)
-    if att:
-        log(f"✅ ВК: картинка загружена (через альбом группы) → {att}")
-    return att
+                log(f"⚠️ ВК: saveWallPhoto не сохранил (попытка {attempt+1})")
+            else:
+                log(f"⚠️ ВК upload: пустое photo (попытка {attempt+1})")
+        else:
+            log(f"⚠️ ВК: getWallUploadServer недоступен (попытка {attempt+1}) — флуд-кулдаун?")
+        delay = 60 * (2 ** attempt)
+        log(f"⏳ ВК: антифлуд-пауза {delay} сек перед попыткой {attempt+2}...")
+        time.sleep(delay)
+    log("⚠️ ВК: музыкальный путь не прошёл — пробую альбом-фолбэк")
+    return vk_upload_via_album(img_bytes)
 
 def vk_post_wall(text, attachment=None):
     params = {"owner_id": "-" + VK_GROUP_ID, "message": text, "from_group": 1}
@@ -612,7 +608,7 @@ def vk_post_wall(text, attachment=None):
     return None
 
 # ============================================================
-# v20: TELEGRAM
+# TELEGRAM
 # ============================================================
 def tg_post(img_bytes, caption):
     if not TG_BOT or not TG_CHAT:
@@ -640,7 +636,7 @@ def tg_post(img_bytes, caption):
     return False
 
 # ============================================================
-# v20: MAX
+# MAX
 # ============================================================
 def _max_headers():
     return ({"Authorization": f"Bearer {MAX_TOKEN}"}, {"Authorization": MAX_TOKEN})
@@ -767,7 +763,7 @@ def max_post(img_bytes, text):
     return False
 
 # ============================================================
-# ГЛАВНАЯ ЛОГИКА v20
+# ГЛАВНАЯ ЛОГИКА v21
 # ============================================================
 def main():
     if not VK_TOKEN or not VK_GROUP_ID:
