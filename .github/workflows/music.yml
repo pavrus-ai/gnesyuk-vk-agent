@@ -6,7 +6,7 @@ on:
   workflow_dispatch:          # ручной запуск по кнопке
 
 permissions:
-  contents: write             # нужно для коммита covers_cache.json
+  contents: write             # для коммита covers_cache.json
 
 jobs:
   publish:
@@ -26,13 +26,13 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install requests Pillow     # Pillow ОБЯЗАТЕЛЕН (иначе «PIL недоступен»)
+        run: pip install requests Pillow
 
       - name: Run music agent
         env:
-          VK_ACCESS_TOKEN: ${{ secrets.VK_ACCESS_TOKEN }}
-          VK_PHOTOS_TOKEN: ${{ secrets.VK_PHOTOS_TOKEN }}
-          VK_OWNER_ID: ${{ secrets.VK_OWNER_ID }}
+          VK_ACCESS_TOKEN: ${{ secrets.VK_TOKEN }}
+          VK_PHOTOS_TOKEN: ${{ secrets.VK_USER_TOKEN }}
+          VK_OWNER_ID: ${{ secrets.VK_GROUP_ID }}
         run: python music_agent.py
 
       - name: Commit covers cache
