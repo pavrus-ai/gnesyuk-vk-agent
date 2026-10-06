@@ -1,19 +1,24 @@
-name: Music Agent
+name: Music Agent VK
 
 on:
   schedule:
-    - cron: "0 8 * * *"
-  workflow_dispatch:
+    - cron: "0 10 * * *"      # 10:00 UTC = 13:00 МСК, один пост в день
+  workflow_dispatch:          # ручной запуск по кнопке
 
 permissions:
-  contents: write
+  contents: write             # нужно для коммита covers_cache.json
 
 jobs:
   publish:
+    name: Publish music to VK
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+
     steps:
-      - name: Checkout
+      - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -21,23 +26,19 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install requests
+        run: pip install requests Pillow     # Pillow ОБЯЗАТЕЛЕН (иначе «PIL недоступен»)
 
       - name: Run music agent
-        run: python music_agent.py
         env:
-          VK_ACCESS_TOKEN: ${{ secrets.VK_TOKEN }}
-          VK_OWNER_ID: ${{ secrets.VK_GROUP_ID }}
-          VK_PHOTOS_TOKEN: ${{ secrets.VK_USER_TOKEN }}
+          VK_ACCESS_TOKEN: ${{ secrets.VK_ACCESS_TOKEN }}
+          VK_PHOTOS_TOKEN: ${{ secrets.VK_PHOTOS_TOKEN }}
+          VK_OWNER_ID: ${{ secrets.VK_OWNER_ID }}
+        run: python music_agent.py
 
       - name: Commit covers cache
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add covers_cache.json || true
-          if git diff --cached --quiet; then
-            echo "Нет изменений для коммита"
-          else
-            git commit -m "chore: update covers cache"
-            git push
-          fi
+          git diff --quiet && git diff --staged --quiet || git commit -m "chore: covers cache [skip ci]"
+          git push
