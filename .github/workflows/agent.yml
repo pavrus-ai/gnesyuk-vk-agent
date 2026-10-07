@@ -2,8 +2,9 @@ name: Gnesyuk VK Agent
 
 on:
   schedule:
-    - cron: "0 3 * * *"       # 03:00 UTC = 06:00 МСК (подальше от музыки 10:00)
-  workflow_dispatch:
+    - cron: "0 3 * * *"          # ПУБЛИКАЦИЯ: пост + одна попытка картинки
+    - cron: "0 9,15,21 * * *"    # ТИКИ: барометр флуда + докрепление картинки
+  workflow_dispatch:              # ручной запуск = режим публикации
 
 permissions:
   contents: write
@@ -11,7 +12,7 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 20        # запас под паузы 60/120/240 сек
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
@@ -28,6 +29,9 @@ jobs:
 
       - name: Run book agent
         env:
+          SCHEDULE: ${{ github.event.schedule }}
+          TEST_IMAGE: ${{ vars.TEST_IMAGE }}
+          DOC_FALLBACK: ${{ vars.DOC_FALLBACK }}
           VK_TOKEN: ${{ secrets.VK_TOKEN }}
           VK_USER_TOKEN: ${{ secrets.VK_USER_TOKEN }}
           VK_GROUP_ID: ${{ secrets.VK_GROUP_ID }}
@@ -51,6 +55,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add vk_att.json vk_album.json img/ || true
+          git add vk_att.json vk_album.json pending_attach.json img/ || true
           git diff --quiet && git diff --staged --quiet || git commit -m "chore: book caches [skip ci]"
           git push
