@@ -20,11 +20,17 @@ TG_CHAT = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
 MAX_TOKEN = os.environ.get("MAX_BOT_TOKEN", "").strip()
 MAX_CHAT = os.environ.get("MAX_CHAT_ID", "").strip()
 LINK_IN_TG = os.environ.get("LINK_IN_TG", "1").strip() != "0"
+# v22: режимы и диагностика
+SCHEDULE = os.environ.get("SCHEDULE", "").strip()
+TEST_IMAGE = os.environ.get("TEST_IMAGE", "").strip()          # напр. covers/imperium.jpg
+DOC_FALLBACK = os.environ.get("DOC_FALLBACK", "0").strip() == "1"
+PUBLISH_CRON = "0 3 * * *"
 
 VK_API = "https://api.vk.com/method/"
 VK_V = "5.131"
 ALBUM_CACHE = "vk_album.json"
 ATT_CACHE = "vk_att.json"
+PENDING = "pending_attach.json"     # v22: пост ждёт картинку
 POLLINATIONS_API = "https://image.pollinations.ai/prompt/"
 MAX_APIS = ["https://platform-api.max.ru", "https://platform-api2.max.ru", "https://botapi.max.ru"]
 TAGS = "#ПавелГнесюк #книги #авторскийблог #писатель"
@@ -63,7 +69,7 @@ def head_style(day, shift=0):
 def log(msg):
     print(msg, flush=True)
 
-log("Версия ℹ️ gnesyuk-vk-agent v21 (загрузка картинки «музыкальным путём»: owner_id + user-токен, мягкий антифлуд 60/120/240с; книги в ВК + TG + MAX)")
+log("Версия ℹ️ gnesyuk-vk-agent v22 (один выстрел загрузки; pending_attach + wall.edit докрепление на тиках; барометр флуда; TEST_IMAGE; DOC_FALLBACK)")
 
 # ============================================================
 # ИИ-ТЕКСТ
@@ -281,7 +287,7 @@ def trim_text(t, limit):
     return (c[:i+1] if i > limit//2 else c).rstrip()
 
 # ============================================================
-# ПОСТЫ: крючок → эскалация → конкретика → обрыв
+# ПОСТЫ
 # ============================================================
 def build_post(book, day):
     t, a, s = book["title"], book["about"], book["series"]
@@ -327,7 +333,7 @@ def build_scene(post):
     return ai_text(prompt, minlen=30, rescue_min=30)
 
 # ============================================================
-# КАРТИНКИ: OpenAI 1024x1024 low + лица; pollinations — силуэты
+# КАРТИНКИ + валидация на этапе создания/сохранения (v22)
 # ============================================================
 def image_stats(img_bytes):
     try:
@@ -350,6 +356,25 @@ def image_ok(img_bytes):
     log(f"🔆 Яркость: средняя {avg:.0f}, ярких пикселей {br:.0%} "
         f"(пропуск: средняя≥65 ИЛИ акцент≥10%) → {'ПРОПУСК' if good else 'ОТБРАКОВКА'}")
     return good
+
+def validate_image(img_bytes, label=""):
+    """v22: жёсткая валидация перед любым использованием: открывается, JPEG-совместима, ≥400px."""
+    try:
+        im = Image.open(io.BytesIO(img_bytes))
+        im.verify()
+        im = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        w, h = im.size
+        if min(w, h) < 400:
+            log(f"⚠️ Валидация {label}: размер {w}x{h} < 400 — отклонена")
+            return None
+        buf = io.BytesIO()
+        im.save(buf, "JPEG", quality=90)
+        data = buf.getvalue()
+        log(f"✅ Валидация {label}: {w}x{h}, {len(data)} байт — картинка здорова")
+        return data
+    except Exception as e:
+        log(f"⚠️ Валидация {label}: файл битый ({e}) — отклонён")
+        return None
 
 def brighten(img_bytes, target=80):
     ok, avg, br = image_stats(img_bytes)
@@ -457,10 +482,9 @@ def convert_to_jpeg(img_bytes):
         return img_bytes
 
 # ============================================================
-# ВК v21: vk_call + мягкий антифлуд + загрузка «музыкальным путём»
+# ВК v22: один выстрел, барометр, wall.edit, doc-обход
 # ============================================================
 def vk_call(method, params=None, token=None, retries=4):
-    """v21: error 9 (Flood control) пережидается 15/30/45/60 сек."""
     p = dict(params or {})
     p["access_token"] = token or VK_TOKEN
     p["v"] = VK_V
@@ -484,6 +508,71 @@ def vk_call(method, params=None, token=None, retries=4):
     log(f"❌ VK {method}: флуд-контроль не отпустил за {retries} попыток")
     return None
 
+def flood_probe():
+    """v22: ОДИН вызов = барометр флуда. Возвращает (зелёный?, srv)."""
+    srv = vk_call("photos.getWallUploadServer", {"owner_id": "-" + VK_GROUP_ID},
+                  token=VK_USER_TOKEN, retries=1)
+    ok = bool(srv and "upload_url" in srv)
+    log(f"🌡 Барометр флуда: {'ЗЁЛЕНЫЙ — загрузка доступна' if ok else 'КРАСНЫЙ — флуд/кулдаун'}")
+    return ok, srv
+
+def finish_upload(srv, img_bytes):
+    """v22: шаги 2-3 по уже полученному upload_url (без повторных вызовов шага 1)."""
+    r = {}
+    try:
+        r = requests.post(srv["upload_url"],
+                          files={"photo": ("cover.jpg", img_bytes, "image/jpeg")},
+                          timeout=120).json()
+    except Exception as e:
+        log(f"⚠️ ВК upload: ошибка POST: {e}")
+    if not (r.get("photo") and r.get("hash")):
+        log(f"⚠️ ВК upload: пустое photo: {str(r)[:120]}")
+        return None
+    saved = vk_call("photos.saveWallPhoto",
+                    {"owner_id": "-" + VK_GROUP_ID, "photo": r["photo"],
+                     "server": r.get("server", ""), "hash": r.get("hash", "")},
+                    token=VK_USER_TOKEN, retries=2)
+    if not saved:
+        return None
+    p = saved[0]
+    att = f"photo{p['owner_id']}_{p['id']}"
+    if p.get("access_key"):
+        att += f"_{p['access_key']}"
+    log(f"✅ ВК: картинка загружена (один выстрел) → {att}")
+    return att
+
+def vk_upload_doc(img_bytes):
+    """v22 (DOC_FALLBACK=1): обход флуда photos.* через docs.*"""
+    for tok in (VK_USER_TOKEN, VK_TOKEN):
+        if not tok:
+            continue
+        srv = vk_call("docs.getUploadServer", {"group_id": VK_GROUP_ID}, token=tok, retries=1)
+        if not srv or "upload_url" not in srv:
+            continue
+        try:
+            r = requests.post(srv["upload_url"],
+                              files={"file": ("book.jpg", img_bytes, "image/jpeg")},
+                              timeout=120).json()
+        except Exception:
+            continue
+        if not r.get("file"):
+            continue
+        saved = vk_call("docs.save", {"file": r["file"], "title": "book.jpg"}, token=tok, retries=2)
+        if saved:
+            d = saved[0] if isinstance(saved, list) else saved
+            att = f"doc{d['owner_id']}_{d['id']}"
+            log(f"✅ ВК: картинка загружена через DOC-обход → {att}")
+            return att
+    return None
+
+def vk_edit_post(post_id, message, att):
+    res = vk_call("wall.edit", {"owner_id": "-" + VK_GROUP_ID, "post_id": post_id,
+                                "message": message, "attachments": att}, retries=2)
+    if res:
+        log(f"✅ ВК: картинка докреплена к посту {post_id} через wall.edit")
+        return True
+    return False
+
 def vk_load_att_cache(day):
     try:
         d = json.load(open(ATT_CACHE, encoding="utf-8"))
@@ -501,98 +590,29 @@ def vk_save_att_cache(day, att):
     except Exception as e:
         log(f"⚠️ vk_att cache: {e}")
 
-def vk_get_album_id():
-    env_id = os.environ.get("VK_ALBUM_ID", "").strip()
-    if env_id.isdigit():
-        return int(env_id)
+def load_pending():
     try:
-        d = json.load(open(ALBUM_CACHE, encoding="utf-8"))
-        if d.get("album_id"):
-            return d["album_id"]
+        if os.path.exists(PENDING):
+            return json.load(open(PENDING, encoding="utf-8"))
     except Exception:
         pass
     return None
 
-def vk_upload_via_album(img_bytes):
-    album = vk_get_album_id()
-    if not album:
-        log("ℹ️ ВК: путь альбома пропущен (нет VK_ALBUM_ID / vk_album.json)")
-        return None
-    for tok in (VK_USER_TOKEN, VK_TOKEN):
-        if not tok:
-            continue
-        srv = vk_call("photos.getUploadServer",
-                      {"group_id": VK_GROUP_ID, "album_id": album}, token=tok)
-        if not srv or "upload_url" not in srv:
-            continue
-        r = None
-        for attempt in (1, 2, 3):
-            try:
-                r = requests.post(srv["upload_url"],
-                                  files={"file1": ("cover.jpg", img_bytes, "image/jpeg")},
-                                  timeout=120).json()
-            except Exception as e:
-                log(f"⚠️ ВК upload в альбом: ошибка POST ({attempt}): {e}")
-                time.sleep(10 * attempt)
-                continue
-            if r.get("hash") and r.get("photos_list"):
-                break
-            log(f"⚠️ ВК upload в альбом: пустой photos_list ({attempt}) — жду и повторяю")
-            time.sleep(10 * attempt)
-        else:
-            continue
-        saved = vk_call("photos.save",
-                        {"group_id": VK_GROUP_ID, "album_id": album,
-                         "server": r.get("server", ""), "photos_list": r.get("photos_list", ""),
-                         "hash": r.get("hash", "")}, token=tok)
-        if saved:
-            p = saved[0]
-            att = f"photo{p['owner_id']}_{p['id']}"
-            if p.get("access_key"):
-                att += f"_{p['access_key']}"
-            log(f"✅ ВК: картинка загружена (через альбом группы) → {att}")
-            return att
-    return None
+def save_pending(day, post_id, caption, img_file):
+    try:
+        json.dump({"day": day, "post_id": post_id, "caption": caption, "img_file": img_file},
+                  open(PENDING, "w", encoding="utf-8"), ensure_ascii=False)
+        log(f"💾 pending_attach.json создан: пост {post_id} ждёт картинку {img_file}")
+    except Exception as e:
+        log(f"⚠️ pending: {e}")
 
-def vk_upload_photo(img_bytes):
-    """v21: музыкальный путь — owner_id + user-токен, 3 попытки с паузами 60/120/240 сек."""
-    tok = VK_USER_TOKEN
-    if not tok:
-        log("⚠️ ВК: нет VK_USER_TOKEN — загрузка невозможна")
-        return None
-    owner = "-" + VK_GROUP_ID
-    for attempt in range(3):
-        srv = vk_call("photos.getWallUploadServer", {"owner_id": owner}, token=tok, retries=1)
-        if srv and "upload_url" in srv:
-            r = {}
-            try:
-                r = requests.post(srv["upload_url"],
-                                  files={"photo": ("cover.jpg", img_bytes, "image/jpeg")},
-                                  timeout=120).json()
-            except Exception as e:
-                log(f"⚠️ ВК upload: ошибка POST: {e}")
-            if r.get("photo") and r.get("hash"):
-                saved = vk_call("photos.saveWallPhoto",
-                                {"owner_id": owner, "photo": r["photo"],
-                                 "server": r.get("server", ""), "hash": r.get("hash", "")},
-                                token=tok, retries=2)
-                if saved:
-                    p = saved[0]
-                    att = f"photo{p['owner_id']}_{p['id']}"
-                    if p.get("access_key"):
-                        att += f"_{p['access_key']}"
-                    log(f"✅ ВК: картинка загружена (музыкальным путём) → {att}")
-                    return att
-                log(f"⚠️ ВК: saveWallPhoto не сохранил (попытка {attempt+1})")
-            else:
-                log(f"⚠️ ВК upload: пустое photo (попытка {attempt+1})")
-        else:
-            log(f"⚠️ ВК: getWallUploadServer недоступен (попытка {attempt+1}) — флуд-кулдаун?")
-        delay = 60 * (2 ** attempt)
-        log(f"⏳ ВК: антифлуд-пауза {delay} сек перед попыткой {attempt+2}...")
-        time.sleep(delay)
-    log("⚠️ ВК: музыкальный путь не прошёл — пробую альбом-фолбэк")
-    return vk_upload_via_album(img_bytes)
+def clear_pending():
+    try:
+        if os.path.exists(PENDING):
+            os.remove(PENDING)
+            log("🧹 pending_attach.json удалён")
+    except Exception:
+        pass
 
 def vk_post_wall(text, attachment=None):
     params = {"owner_id": "-" + VK_GROUP_ID, "message": text, "from_group": 1}
@@ -696,9 +716,6 @@ def max_collect_ids():
             cid2 = up.get("chat_id")
             if cid2 and cid2 not in ids:
                 ids.append(cid2)
-            uid = up.get("user_id") or ((up.get("message") or {}).get("user_id"))
-            if uid and uid not in user_ids:
-                user_ids.append(uid)
     return ids, user_ids
 
 def max_upload(img_bytes, chat_val):
@@ -763,14 +780,51 @@ def max_post(img_bytes, text):
     return False
 
 # ============================================================
-# ГЛАВНАЯ ЛОГИКА v21
+# v22: РЕЖИМ ТИКА (каждые 6 часов) — докрепление картинки
 # ============================================================
-def main():
+def run_tick(day):
+    log("🕐 Режим: ТИК (только барометр + докрепление картинки)")
+    green, srv = flood_probe()
+    pend = load_pending()
+    if not pend:
+        log("ℹ️ pending_attach.json нет — постов без картинки не ожидается")
+        return True
+    if pend.get("day", 0) < day - 1:
+        log(f"⚠️ pending от {pend.get('day')} устарел (>1 сут) — сбрасываю")
+        clear_pending()
+        return True
+    if not green:
+        log("⏳ Флуд красный — картинка подождёт до следующего тика (вызовов больше не делаю)")
+        return True
+    img_file = pend.get("img_file", "")
+    img_bytes = None
+    if os.path.exists(img_file):
+        with open(img_file, "rb") as f:
+            img_bytes = validate_image(f.read(), label=img_file)
+    if not img_bytes:
+        log(f"⚠️ Файл картинки {img_file} недоступен/бит — сбрасываю pending")
+        clear_pending()
+        return True
+    att = finish_upload(srv, img_bytes)
+    if not att:
+        log("⚠️ Загрузка на зелёном барометре не удалась — жду следующий тик")
+        return True
+    if vk_edit_post(pend["post_id"], pend["caption"], att):
+        vk_save_att_cache(day, att)
+        clear_pending()
+        return True
+    log("⚠️ wall.edit не смог докрепить — попробуем в следующем тике")
+    return True
+
+# ============================================================
+# v22: РЕЖИМ ПУБЛИКАЦИИ (03:00 UTC / ручной запуск)
+# ============================================================
+def run_publish(day):
+    log("Publish Режим: ПУБЛИКАЦИЯ (пост + одна попытка картинки)")
     if not VK_TOKEN or not VK_GROUP_ID:
         log("⚠️ Нет VK_TOKEN/VK_GROUP_ID — пропуск ВК")
         return
     books = json.load(open("books.json", encoding="utf-8"))["books"]
-    day = datetime.date.today().toordinal()
     book = books[day % len(books)]
     log(f"📚 Книга дня: «{book['title']}» ({book['series']})")
     log(f"🎣 Эмоциональный крючок сегодня: {head_style(day)}")
@@ -788,57 +842,89 @@ def main():
     link_part = f"\n\n📖 Читайте на ЛитРес: {link}" if (link and LINK_IN_TG) else ""
     caption = trim_text(post, 4000 - len(link_part) - len(TAGS) - 2) + link_part + "\n\n" + TAGS
 
-    scene = build_scene(post)
-    base_img = scene if scene else book.get("about", "")[:120]
-    run_no = int(os.environ.get("GITHUB_RUN_NUMBER", "0"))
+    # Картинка: TEST_IMAGE → генерация → старая из img/
     img_bytes = None
-    for attempt in range(4):
-        seed = day + 3000000 + (run_no % 100) + attempt * 7919
-        img_bytes = download_image(base_img, seed)
-        if img_bytes:
-            break
-        log(f"⏳ Попытка {attempt + 1} не удалась, пробуем снова...")
-    if img_bytes:
-        img_bytes = convert_to_jpeg(img_bytes)
+    img_file = ""
+    if TEST_IMAGE and os.path.exists(TEST_IMAGE):
+        log(f"🧪 TEST_IMAGE: беру файл {TEST_IMAGE} вместо генерации")
+        with open(TEST_IMAGE, "rb") as f:
+            img_bytes = validate_image(f.read(), label=TEST_IMAGE)
+        img_file = TEST_IMAGE
+    if not img_bytes:
+        scene = build_scene(post)
+        base_img = scene if scene else book.get("about", "")[:120]
+        run_no = int(os.environ.get("GITHUB_RUN_NUMBER", "0"))
+        for attempt in range(4):
+            seed = day + 3000000 + (run_no % 100) + attempt * 7919
+            raw = download_image(base_img, seed)
+            if raw:
+                img_bytes = validate_image(convert_to_jpeg(raw), label="генерация")
+                if img_bytes:
+                    break
+            log(f"⏳ Попытка {attempt + 1} не удалась, пробуем снова...")
+    if img_bytes and not img_file:
         os.makedirs("img", exist_ok=True)
-        path = f"img/vk_{day}.jpg"
-        with open(path, "wb") as f:
+        img_file = f"img/vk_{day}.jpg"
+        with open(img_file, "wb") as f:
             f.write(img_bytes)
-        log(f"💾 Картинка сохранена: {path}")
-    else:
+        log(f"💾 Картинка сохранена: {img_file}")
+    if not img_bytes:
         candidates = []
         for f in glob.glob("img/vk_*.jpg"):
             with open(f, "rb") as fh:
                 if image_ok(fh.read()):
                     candidates.append(f)
         if candidates:
-            pick = candidates[-1]
-            log(f"⚠️ Генерация не удалась — беру прежнюю картинку {pick}")
-            with open(pick, "rb") as f:
-                img_bytes = f.read()
+            img_file = candidates[-1]
+            log(f"⚠️ Генерация не удалась — беру прежнюю картинку {img_file}")
+            with open(img_file, "rb") as f:
+                img_bytes = validate_image(f.read(), label=img_file)
         else:
             log("⚠️ Нет ни свежей, ни подходящей старой картинки")
 
-    att = None
-    if img_bytes:
-        att = vk_load_att_cache(day)
-        if not att:
-            att = vk_upload_photo(img_bytes)
+    # Один выстрел загрузки
+    att = vk_load_att_cache(day) if img_bytes else None
+    if img_bytes and not att:
+        green, srv = flood_probe()
+        if green:
+            att = finish_upload(srv, img_bytes)
             if att:
                 vk_save_att_cache(day, att)
-    if not att:
-        log("⚠️ Картинку загрузить не удалось — ВК-пост выйдет без картинки")
+        elif DOC_FALLBACK:
+            log("🧯 DOC_FALLBACK=1: пробую обход через docs.*")
+            att = vk_upload_doc(img_bytes)
+            if att:
+                vk_save_att_cache(day, att)
+        else:
+            log("⚠️ Флуд красный: лишних вызовов не делаю, картинка уйдёт в pending")
 
-    ok_vk = bool(vk_post_wall(caption, att))
+    res = vk_post_wall(caption, att)
+    ok_vk = bool(res)
+    if ok_vk and att:
+        log("✅ ВК: пост с картинкой")
+    elif ok_vk and img_bytes:
+        save_pending(day, res["post_id"], caption, img_file)
     ok_tg = tg_post(img_bytes, caption)
     ok_max = max_post(img_bytes, caption)
 
     log("=" * 50)
     log(f"✅ FINISH книги: ВК={'ДА' if ok_vk else 'НЕТ'}, TG={'ДА' if ok_tg else 'НЕТ'}, "
-        f"MAX={'ДА' if ok_max else 'НЕТ'}" + ("" if att else " (ВК без картинки)"))
+        f"MAX={'ДА' if ok_max else 'НЕТ'}" + ("" if att else " (картинка докрепится тиком)"))
     log("=" * 50)
     if not (ok_vk or ok_tg or ok_max):
         raise SystemExit(1)
+
+# ============================================================
+# ТОЧКА ВХОДА
+# ============================================================
+def main():
+    day = datetime.date.today().toordinal()
+    mode = "publish" if (not SCHEDULE or SCHEDULE == PUBLISH_CRON) else "tick"
+    log(f"🗓 Расписание запуска: «{SCHEDULE or 'ручной'}» → режим: {mode}")
+    if mode == "tick":
+        run_tick(day)
+    else:
+        run_publish(day)
 
 if __name__ == "__main__":
     try:
