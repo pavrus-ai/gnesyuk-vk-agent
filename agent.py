@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import os, json, datetime, requests, time, io, glob, base64, uuid, urllib3, re
+import os, json, datetime, requests, time, io, glob, base64, uuid, urllib3, re, subprocess
 from PIL import Image, ImageEnhance
 urllib3.disable_warnings()
 
@@ -20,17 +20,15 @@ TG_CHAT = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
 MAX_TOKEN = os.environ.get("MAX_BOT_TOKEN", "").strip()
 MAX_CHAT = os.environ.get("MAX_CHAT_ID", "").strip()
 LINK_IN_TG = os.environ.get("LINK_IN_TG", "1").strip() != "0"
-# v22: режимы и диагностика
 SCHEDULE = os.environ.get("SCHEDULE", "").strip()
-TEST_IMAGE = os.environ.get("TEST_IMAGE", "").strip()          # напр. covers/imperium.jpg
+TEST_IMAGE = os.environ.get("TEST_IMAGE", "").strip()
 DOC_FALLBACK = os.environ.get("DOC_FALLBACK", "0").strip() == "1"
 PUBLISH_CRON = "0 3 * * *"
 
 VK_API = "https://api.vk.com/method/"
 VK_V = "5.131"
-ALBUM_CACHE = "vk_album.json"
 ATT_CACHE = "vk_att.json"
-PENDING = "pending_attach.json"     # v22: пост ждёт картинку
+PENDING = "pending_attach.json"
 POLLINATIONS_API = "https://image.pollinations.ai/prompt/"
 MAX_APIS = ["https://platform-api.max.ru", "https://platform-api2.max.ru", "https://botapi.max.ru"]
 TAGS = "#ПавелГнесюк #книги #авторскийблог #писатель"
@@ -69,7 +67,7 @@ def head_style(day, shift=0):
 def log(msg):
     print(msg, flush=True)
 
-log("Версия ℹ️ gnesyuk-vk-agent v22 (один выстрел загрузки; pending_attach + wall.edit докрепление на тиках; барометр флуда; TEST_IMAGE; DOC_FALLBACK)")
+log("Версия ℹ️ gnesyuk-vk-agent v22.1 (один выстрел; pending_attach + wall.edit; барометр; TEST_IMAGE; DOC_FALLBACK; мгновенный коммит картинки; MAX с числовым chat_id)")
 
 # ============================================================
 # ИИ-ТЕКСТ
@@ -126,7 +124,7 @@ def ai_gigachat(prompt):
                   "messages": [{"role": "user", "content": prompt + RU}]},
             timeout=90, verify=False)
         if r.status_code != 200:
-            log(f"⚠️ GigaChat chat: статус {r.status_code}: {r.text[:200]}")
+            log(f"️ GigaChat chat: статус {r.status_code}: {r.text[:200]}")
             return None
         return r.json()["choices"][0]["message"]["content"].strip()
     except Exception as e:
@@ -156,7 +154,7 @@ def ai_mistral(prompt):
             json={"model": "mistral-small-latest", "temperature": 0.8,
                   "messages": [{"role": "user", "content": prompt + RU}]}, timeout=60).json()
         if "error" in r:
-            log(f"   ⚠️ mistral: {_err_snippet(r)}")
+            log(f"   ️ mistral: {_err_snippet(r)}")
             return None
         return _extract(r)
     except Exception as e:
@@ -190,7 +188,7 @@ def ai_openrouter_auto(prompt, key, max_tokens):
             return None
         return _extract(r)
     except Exception as e:
-        log(f"   ⚠️ openrouter auto: сеть/ошибка {str(e)[:80]}")
+        log(f"   ️ openrouter auto: сеть/ошибка {str(e)[:80]}")
         return None
 
 def ai_pollinations_text(prompt):
@@ -245,7 +243,7 @@ def ai_text(prompt, minlen=300, rescue_min=200):
     for i, key in enumerate((OR_KEY, OR_KEY2)):
         if not key: continue
         for mt in (1000, 512):
-            log(f"🔄 Попытка: openrouter auto (max_tokens={mt}, ключ {i+1})...")
+            log(f" Попытка: openrouter auto (max_tokens={mt}, ключ {i+1})...")
             r = take(ai_openrouter_auto(prompt, key, mt), f"openrouter auto (max={mt}, ключ {i+1})")
             if r: return r
     log("🔄 Попытка: pollinations-text (без ключа)...")
@@ -333,7 +331,7 @@ def build_scene(post):
     return ai_text(prompt, minlen=30, rescue_min=30)
 
 # ============================================================
-# КАРТИНКИ + валидация на этапе создания/сохранения (v22)
+# КАРТИНКИ + валидация
 # ============================================================
 def image_stats(img_bytes):
     try:
@@ -353,12 +351,11 @@ def image_ok(img_bytes):
     if not ok:
         return False
     good = avg >= 65 or br >= 0.10
-    log(f"🔆 Яркость: средняя {avg:.0f}, ярких пикселей {br:.0%} "
+    log(f" Яркость: средняя {avg:.0f}, ярких пикселей {br:.0%} "
         f"(пропуск: средняя≥65 ИЛИ акцент≥10%) → {'ПРОПУСК' if good else 'ОТБРАКОВКА'}")
     return good
 
 def validate_image(img_bytes, label=""):
-    """v22: жёсткая валидация перед любым использованием: открывается, JPEG-совместима, ≥400px."""
     try:
         im = Image.open(io.BytesIO(img_bytes))
         im.verify()
@@ -505,11 +502,10 @@ def vk_call(method, params=None, token=None, retries=4):
             log(f"⚠️ VK {method}: {str(err)[:150]}")
             return None
         return r.get("response")
-    log(f"❌ VK {method}: флуд-контроль не отпустил за {retries} попыток")
+    log(f" VK {method}: флуд-контроль не отпустил за {retries} попыток")
     return None
 
 def flood_probe():
-    """v22: ОДИН вызов = барометр флуда. Возвращает (зелёный?, srv)."""
     srv = vk_call("photos.getWallUploadServer", {"owner_id": "-" + VK_GROUP_ID},
                   token=VK_USER_TOKEN, retries=1)
     ok = bool(srv and "upload_url" in srv)
@@ -517,7 +513,6 @@ def flood_probe():
     return ok, srv
 
 def finish_upload(srv, img_bytes):
-    """v22: шаги 2-3 по уже полученному upload_url (без повторных вызовов шага 1)."""
     r = {}
     try:
         r = requests.post(srv["upload_url"],
@@ -542,7 +537,6 @@ def finish_upload(srv, img_bytes):
     return att
 
 def vk_upload_doc(img_bytes):
-    """v22 (DOC_FALLBACK=1): обход флуда photos.* через docs.*"""
     for tok in (VK_USER_TOKEN, VK_TOKEN):
         if not tok:
             continue
@@ -610,9 +604,27 @@ def clear_pending():
     try:
         if os.path.exists(PENDING):
             os.remove(PENDING)
-            log("🧹 pending_attach.json удалён")
+            log(" pending_attach.json удалён")
     except Exception:
         pass
+
+def commit_image(img_file):
+    """v22.1: мгновенный коммит картинки в репозиторий после сохранения."""
+    try:
+        subprocess.run(["git", "config", "user.name", "github-actions[bot]"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "github-actions[bot]@users.noreply.github.com"], check=True, capture_output=True)
+        subprocess.run(["git", "add", img_file], check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", f"chore: add image {os.path.basename(img_file)} [skip ci]"],
+                       check=True, capture_output=True)
+        subprocess.run(["git", "push"], check=True, capture_output=True)
+        log(f"✅ Картинка {img_file} закоммичена в репозиторий")
+        return True
+    except subprocess.CalledProcessError as e:
+        log(f"⚠️ Коммит картинки не удался: {e.stderr.decode() if e.stderr else str(e)}")
+        return False
+    except Exception as e:
+        log(f"⚠️ Коммит картинки ошибка: {e}")
+        return False
 
 def vk_post_wall(text, attachment=None):
     params = {"owner_id": "-" + VK_GROUP_ID, "message": text, "from_group": 1}
@@ -620,7 +632,7 @@ def vk_post_wall(text, attachment=None):
         params["attachments"] = attachment
     res = vk_call("wall.post", params)
     if not res and VK_USER_TOKEN:
-        log("⚠️ ВК: групповой токен не смог опубликовать — пробую юзер-токеном")
+        log("️ ВК: групповой токен не смог опубликовать — пробую юзер-токеном")
         res = vk_call("wall.post", params, token=VK_USER_TOKEN)
     if res:
         log(f"✅ ВК: пост опубликован: https://vk.com/wall-{VK_GROUP_ID}_{res.get('post_id')}")
@@ -638,7 +650,7 @@ def tg_post(img_bytes, caption):
     if len(cap) > 1000:
         cut = cap.rfind(".", 0, 1000)
         cap = cap[:cut+1] if cut > 800 else cap[:1000]
-        log(f"✂️ TG: подписка обрезана до {len(cap)} симв. (лимит 1024)")
+        log(f"✂️ TG: подпись обрезана до {len(cap)} симв. (лимит 1024)")
     try:
         if img_bytes:
             r = requests.post(f"https://api.telegram.org/bot{TG_BOT}/sendPhoto",
@@ -656,7 +668,7 @@ def tg_post(img_bytes, caption):
     return False
 
 # ============================================================
-# MAX
+# MAX (v22.1: числовой chat_id первым, строка как фолбэк)
 # ============================================================
 def _max_headers():
     return ({"Authorization": f"Bearer {MAX_TOKEN}"}, {"Authorization": MAX_TOKEN})
@@ -756,13 +768,16 @@ def max_post(img_bytes, text):
     ids, user_ids = max_collect_ids()
     variants = list(ids)
     if MAX_CHAT:
-        sec = int(MAX_CHAT) if MAX_CHAT.lstrip("-").isdigit() else MAX_CHAT
-        if sec not in variants:
-            variants.append(sec)
-        if str(MAX_CHAT) not in variants:
-            variants.append(str(MAX_CHAT))
+        # v22.1: если MAX_CHAT числовой — ставим его ПЕРВЫМ (MAX не принимает строку)
+        if MAX_CHAT.lstrip("-").isdigit():
+            sec = int(MAX_CHAT)
+            if sec not in variants:
+                variants.insert(0, sec)
+        else:
+            if MAX_CHAT not in variants:
+                variants.append(MAX_CHAT)
     if not variants:
-        log("⚠️ MAX: ни одного chat_id из событий и секрета")
+        log("️ MAX: ни одного chat_id из событий и секрета")
         return False
     log(f"ℹ️ MAX: кандидаты chat_id: {variants}")
     att = max_upload(img_bytes, variants[0]) if img_bytes else None
@@ -820,7 +835,7 @@ def run_tick(day):
 # v22: РЕЖИМ ПУБЛИКАЦИИ (03:00 UTC / ручной запуск)
 # ============================================================
 def run_publish(day):
-    log("Publish Режим: ПУБЛИКАЦИЯ (пост + одна попытка картинки)")
+    log("📢 Режим: ПУБЛИКАЦИЯ (пост + одна попытка картинки)")
     if not VK_TOKEN or not VK_GROUP_ID:
         log("⚠️ Нет VK_TOKEN/VK_GROUP_ID — пропуск ВК")
         return
@@ -836,7 +851,7 @@ def run_publish(day):
         post = trim_text(post, 700)
         log(f"✂️ Пост доведён до 700: {len(post)} симв.")
     log(f"✂️ Крючок поста: {post.split(chr(10))[0][:150]}")
-    log(f"📝 Длина поста: {len(post)} симв.")
+    log(f" Длина поста: {len(post)} симв.")
 
     link = book.get("url", "")
     link_part = f"\n\n📖 Читайте на ЛитРес: {link}" if (link and LINK_IN_TG) else ""
@@ -846,7 +861,7 @@ def run_publish(day):
     img_bytes = None
     img_file = ""
     if TEST_IMAGE and os.path.exists(TEST_IMAGE):
-        log(f"🧪 TEST_IMAGE: беру файл {TEST_IMAGE} вместо генерации")
+        log(f" TEST_IMAGE: беру файл {TEST_IMAGE} вместо генерации")
         with open(TEST_IMAGE, "rb") as f:
             img_bytes = validate_image(f.read(), label=TEST_IMAGE)
         img_file = TEST_IMAGE
@@ -868,6 +883,8 @@ def run_publish(day):
         with open(img_file, "wb") as f:
             f.write(img_bytes)
         log(f"💾 Картинка сохранена: {img_file}")
+        # v22.1: СРАЗУ коммитим картинку в репозиторий
+        commit_image(img_file)
     if not img_bytes:
         candidates = []
         for f in glob.glob("img/vk_*.jpg"):
@@ -876,7 +893,7 @@ def run_publish(day):
                     candidates.append(f)
         if candidates:
             img_file = candidates[-1]
-            log(f"⚠️ Генерация не удалась — беру прежнюю картинку {img_file}")
+            log(f"️ Генерация не удалась — беру прежнюю картинку {img_file}")
             with open(img_file, "rb") as f:
                 img_bytes = validate_image(f.read(), label=img_file)
         else:
@@ -896,7 +913,7 @@ def run_publish(day):
             if att:
                 vk_save_att_cache(day, att)
         else:
-            log("⚠️ Флуд красный: лишних вызовов не делаю, картинка уйдёт в pending")
+            log("️ Флуд красный: лишних вызовов не делаю, картинка уйдёт в pending")
 
     res = vk_post_wall(caption, att)
     ok_vk = bool(res)
