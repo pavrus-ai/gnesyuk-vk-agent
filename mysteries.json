@@ -1,1 +1,803 @@
 
+[
+  {
+    "topic": "Проект «Ромб» и антигравитация",
+    "facts": [
+      "Секретные разработки на стыке физики и эзотерики в рамках Аненербе.",
+      "Попытки создания двигателей, использующих торсионные поля и вращающиеся магнитные элементы.",
+      "Связь с тибетскими экспедициями и поиском древних источников энергии."
+    ],
+    "image_prompt": "Cinematic dark laboratory, 1940s, glowing mysterious diamond-shaped metallic device levitating slightly, blue electrical arcs, scientists in shadows, volumetric lighting, highly detailed, photorealistic",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Колокол (Die Glocke)",
+    "facts": [
+      "Самый засекреченный проект Третьего рейха, о котором упоминал свидетель Ян ван Хельсинг.",
+      "Два вращающихся в противоположных направлениях цилиндра с фиолетовой жидкостью (предположительно, ртуть или элемент Xerum 525).",
+      "Побочные эффекты: кристаллизация крови у подопытных, гибель растений в радиусе 200 метров, исчезновение ключевых ученых после войны."
+    ],
+    "image_prompt": "Massive mysterious bell-shaped metallic device in a deep underground concrete bunker, glowing purple liquid inside, rotating rings, eerie atmospheric lighting, cinematic, 8k resolution",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Экспедиция Аненербе в Тибет (1938)",
+    "facts": [
+      "Эрнст Шефер и пятеро ученых отправились в Гималаи не просто для изучения фауны.",
+      "Официальная цель: антропология. Неофициальная: поиск Шамбалы, истоков арийской расы и древних технологий в пещерах.",
+      "Измерение черепов тибетцев и странные находки, которые так и не были полностью рассекречены."
+    ],
+    "image_prompt": "1930s german expedition team in snowy himalayan mountains, discovering a glowing ancient cave entrance, mysterious atmosphere, cinematic lighting, historical fiction style",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Новая Швабия: антарктическая база",
+    "facts": [
+      "В 1939 году Германия официально аннексировала часть Антарктиды, назвав её Новой Швабией.",
+      "Существуют неподтвержденные данные о строительстве подземной базы «База 211» в горах Гиммлера.",
+      "Послевоенные операции США и СССР в этом районе (Highjump) породили теории о скрытых технологиях или остатках флота."
+    ],
+    "image_prompt": "Massive hidden underground futuristic base inside an Antarctic ice mountain, 1940s retro-futuristic style, searchlights cutting through blizzard, cinematic, mysterious",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Общество Врил и мистическая энергия",
+    "facts": [
+      "Тайное оккультное общество в Германии начала XX века, вдохновленное романом Бульвера-Литтона «Грядущая раса».",
+      "Учение о «Врил» — всепроникающей энергии, которой можно управлять силой мысли и специальными медитативными практиками.",
+      "Якобы именно знания Врил легли в основу разработок реактивных двигателей и НЛО Третьего рейха."
+    ],
+    "image_prompt": "Mystical glowing energy swirling around a meditating figure in a dark 1920s occult chamber, ancient runes on walls, ethereal blue and gold light, cinematic, highly detailed",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Антикитерский механизм: компьютер из глубины веков",
+    "facts": [
+      "Обнаружен в 1901 году в затонувшем корабле у острова Антикитера.",
+      "Система из минимум 30 бронзовых шестерней, способная с пугающей точностью предсказывать солнечные и лунные затмения.",
+      "Уровень механической инженерии, который человечество заново открыло только в XIV веке. Кто его создал и почему технология исчезла?"
+    ],
+    "image_prompt": "Intricate ancient bronze gear mechanism partially submerged in clear blue ocean water, glowing with a faint mystical light, cinematic underwater photography, highly detailed",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Римский бетон: секрет вечности",
+    "facts": [
+      "Пантеон и волнорезы стоят 2000 лет, тогда как современный бетон разрушается за 50-100 лет.",
+      "Секрет кроется в вулканическом пепле (пуццолане) и морской воде, которая запускает реакцию образования тоберморита.",
+      "Этот самовосстанавливающийся материал был утерян после падения Рима и воссоздан учеными лишь недавно."
+    ],
+    "image_prompt": "Ancient Roman concrete harbor wall crashing with ocean waves, cross-section showing glowing crystalline self-healing structure, cinematic, hyperrealistic, dramatic lighting",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Багдадская батарея: электричество в древности?",
+    "facts": [
+      "Глиняные кувшины возрастом около 2000 лет, найденные в окрестностях Багдада, содержат медный цилиндр и железный стержень.",
+      "При заполнении кислотой (например, виноградным соком) они вырабатывают слабый электрический ток.",
+      "Знали ли парфяне о гальванизации за полторы тысячи лет до Вольта? Или это было хранилище для священных свитков?"
+    ],
+    "image_prompt": "Ancient clay pot with copper cylinder and iron rod inside, glowing faintly with electrical sparks, dark museum background, dramatic spotlight, photorealistic",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Греческий огонь: оружие, горевшее под водой",
+    "facts": [
+      "Секретное оружие Византийской империи, спасшее Константинополь от арабских флотов.",
+      "Жидкость, которая воспламенялась при контакте с водой и не тушилась песком или уксусом.",
+      "Рецепт был настолько засекречен, что его унесли в могилу последние мастера, и до сих пор ведутся споры о его составе (нефть, селитра, негашеная известь?)."
+    ],
+    "image_prompt": "Ancient Byzantine ship spraying a massive stream of glowing green fire onto enemy wooden ships at night, dramatic ocean battle, cinematic, volumetric smoke and fire",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Дамасская сталь и углеродные нанотрубки",
+    "facts": [
+      "Легендарные клинки, которые могли разрезать падающий на лезвие шелковый платок и не тупились годами.",
+      "Секрет ковки был утерян в XVIII веке. Только в 2006 году электронный микроскоп показал в стали углеродные нанотрубки и цементитные нанопроволоки.",
+      "Как средневековые кузнецы могли управлять процессами на наноуровне без соответствующих знаний?"
+    ],
+    "image_prompt": "Close-up of a glowing ancient Damascus steel sword blade, showing intricate wavy patterns and microscopic glowing nanotubes, dark forge background, cinematic lighting",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Карты Пири-реиса: Антарктида без льда",
+    "facts": [
+      "Карта, составленная османским адмиралом в 1513 году на основе более древних источников.",
+      "На ней с поразительной точностью изображено западное побережье Африки, Южная Америка и... береговая линия Антарктиды, свободная от ледяного покрова.",
+      "Официально Антарктида была открыта только в 1820 году, а её подледный рельеф был изучен лишь в XX веке с помощью эхолокации."
+    ],
+    "image_prompt": "Ancient glowing parchment map spread on a wooden table, showing a detailed ice-free Antarctica, candlelight, mysterious atmosphere, cinematic, highly detailed",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Проект МК-УЛЬТРА: взлом человеческого разума",
+    "facts": [
+      "Секретная программа ЦРУ (1953-1973), направленная на разработку методов контроля над сознанием.",
+      "Использование ЛСД, сенсорной депривации, электрошока и психологического насилия над ничего не подозревающими гражданами.",
+      "Большинство документов было уничтожено директором ЦРУ Ричардом Хелмсом в 1973 году, но рассекреченные фрагменты шокируют до сих пор."
+    ],
+    "image_prompt": "Cold 1960s sterile laboratory, shadowy figure observing a subject in a chair through one-way glass, glowing monitors, eerie green and blue lighting, cinematic thriller style",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Феномен «Божественного шлема» (God Helmet)",
+    "facts": [
+      "Эксперимент нейробиолога Майкла Персингера в 1980-х годах.",
+      "Шлем со слабыми магнитными катушками, воздействующими на височные доли мозга, заставлял испытуемых чувствовать «присутствие высшей силы» или выходить из тела.",
+      "Это ставит под сомнение мистическую природу религиозного опыта: является ли он лишь электрохимической реакцией мозга?"
+    ],
+    "image_prompt": "Person wearing a futuristic helmet with glowing wires and coils, sitting in a dark room, ethereal glowing aura surrounding their head, cinematic, mysterious, sci-fi realism",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Тибетская практика Туммо: огонь внутри",
+    "facts": [
+      "Древняя практика монахов, позволяющая им сушить мокрые ледяные простыни, обернутые вокруг тела, на морозе Гималаев.",
+      "Ученые (в т.ч. Гарвардская медицинская школа) зафиксировали реальное повышение температуры тела и изменение метаболизма у практикующих.",
+      "Это не магия, а предельный контроль над вегетативной нервной системой, доступный человеку."
+    ],
+    "image_prompt": "Tibetan monk meditating in a snowy mountain landscape at night, glowing warm orange aura radiating from his body, melting snow around him, cinematic, highly detailed",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Шаманский бубен и тета-ритмы мозга",
+    "facts": [
+      "Ритмичный бой бубна с частотой 4-7 ударов в секунду не случаен.",
+      "Эта частота совпадает с тета-ритмом мозга, который возникает в пограничных состояниях между сном и бодрствованием.",
+      "Шаманы интуитивно использовали акустический драйв для перехода в измененное состояние сознания и «путешествий» в иные миры."
+    ],
+    "image_prompt": "Shaman playing a large ornate drum in a dark forest at night, glowing mystical sound waves visualizing theta rhythms, firelight, cinematic, atmospheric, mysterious",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Подземный город Деринкую: 18 уровней вглубь",
+    "facts": [
+      "Многоярусный подземный город в Каппадокии, способный укрыть до 20 000 человек со скотом и запасами.",
+      "Сложнейшая система вентиляции, водоносные колодцы, защищающие от отравления, и массивные каменные двери, открывавшиеся только изнутри.",
+      "Кто построил этот мегаполис в скале и от какой глобальной угрозы он должен был защитить?"
+    ],
+    "image_prompt": "Vast ancient underground city carved into rock, multiple levels with glowing torches, intricate ventilation shafts, cinematic, mysterious, highly detailed architecture",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Пума Пунку: каменные пазлы с точностью до микрона",
+    "facts": [
+      "Комплекс в Боливии, возраст которого оценивается в 15 000 лет.",
+      "Каменные блоки из андезита весят до 100 тонн и имеют идеально прямые углы и пазы, как будто вырезанные лазером или фрезерным станком.",
+      "Современный алмазный инструмент с трудом справляется с таким камнем, не говоря уже о технологиях, доступных древним."
+    ],
+    "image_prompt": "Massive ancient stone blocks with perfectly cut interlocking joints and precise holes, glowing faintly in a misty high-altitude landscape, cinematic, mysterious, photorealistic",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Кольская сверхглубокая скважина: голоса из бездны",
+    "facts": [
+      "Самая глубокая искусственная точка на Земле (12 262 метра).",
+      "Легенда гласит, что на глубине микрофоны записали крики и стоны, похожие на голоса из ада. Наука объясняет это естественными геоакустическими явлениями.",
+      "Проект был закрыт в 1990-х годах из-за отсутствия финансирования и непредсказуемого поведения породы, которая вела себя «как пластик»."
+    ],
+    "image_prompt": "Massive rusted drilling rig in a desolate snowy tundra, glowing red light emanating from the deep dark shaft below, eerie atmospheric fog, cinematic, mysterious",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Пещеры Лонгйюй: рукотворная загадка без истории",
+    "facts": [
+      "В Китае обнаружено 36 огромных рукотворных гротов, вырубленных в твердом песчанике.",
+      "Площадь каждого до 3000 кв. м, стены покрыты параллельными долотообразными насечками.",
+      "Никаких исторических упоминаний, инструментов или имен строителей не найдено. Возраст оценивается в 2000+ лет."
+    ],
+    "image_prompt": "Vast ancient underground cavern carved from stone, walls covered in perfectly parallel chisel marks, illuminated by a single beam of light from above, cinematic, mysterious",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Генератор Сирла (SEG): вечный двигатель?",
+    "facts": [
+      "Устройство, изобретенное Джоном Сирлом, которое якобы вращается за счет собственного магнитного поля.",
+      "Конструкция из чередующихся слоев неодима и меди, которая, по заявлениям, нарушает законы термодинамики и генерирует избыточную энергию.",
+      "Множество попыток воспроизвести устройство терпят неудачу, а сам изобретатель подвергался преследованиям."
+    ],
+    "image_prompt": "Futuristic cylindrical device with alternating copper and magnetic rings levitating and spinning, emitting blue electrical energy, dark laboratory background, cinematic, sci-fi",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Никола Тесла и «Мировой эфир»",
+    "facts": [
+      "Тесла считал, что человеческий мозг — это просто приемник, черпающий знания из космического ядра.",
+      "Его башня Ворденклиф была задумана не только для передачи радио, но и для беспроводной передачи энергии через саму Землю.",
+      "После его смерти многие записи и прототипы были изъяты правительственными агентами и засекречены."
+    ],
+    "image_prompt": "Nikola Tesla standing before a massive glowing electrical tower at night, lightning striking the sky, ethereal energy waves, cinematic, historical fiction, dramatic lighting",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Холодный термояд: подавленное открытие",
+    "facts": [
+      "В 1989 году Мартин Флейшман и Стэнли Понс заявили о получении термоядерной реакции при комнатной температуре в простой электролитической ячейке.",
+      "Мировые СМИ трубили о революции в энергетике, но через несколько недель научное сообщество объявило результаты «ошибкой».",
+      "Сегодня исследования в области LENR (низкоэнергетические ядерные реакции) продолжаются в тени, без государственного финансирования."
+    ],
+    "image_prompt": "Simple glass laboratory beaker glowing with intense unnatural blue light, scientists looking in shock, 1980s lab setting, cinematic, mysterious, highly detailed",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Двигатель EM Drive: нарушение законов физики",
+    "facts": [
+      "Реактивный двигатель, который создает тягу без выброса реактивной массы, что противоречит закону сохранения импульса.",
+      "Тестировался в вакуумных камерах NASA и китайскими учеными, показывая стабильную, хоть и слабую, тягу.",
+      "Если это работает, это открывает путь к межзвездным путешествиям без гигантских запасов топлива."
+    ],
+    "image_prompt": "Futuristic metallic cone-shaped engine floating in a high-tech vacuum chamber, emitting a faint glowing distortion in the air, cinematic, sci-fi realism, dramatic lighting",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Рукопись Войнич: книга, которую не может прочесть ИИ",
+    "facts": [
+      "Рукопись XV века, написанная на неизвестном языке или шифре, с иллюстрациями несуществующих растений и астрономических диаграмм.",
+      "За 100 лет её не смогли расшифровать ни лучшие криптографы мира (включая взломщиков «Энигмы»), ни современные нейросети.",
+      "Является ли это гениальной мистификацией или ключом к забытым знаниям?"
+    ],
+    "image_prompt": "Ancient mysterious book open on a wooden desk, pages filled with strange glowing symbols and illustrations of unknown plants, candlelight, cinematic, highly detailed",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Фестский диск: одинокая загадка Крита",
+    "facts": [
+      "Глиняный диск, найденный в 1908 году во дворце Феста, покрытый спиральными рядами штампованных иероглифов.",
+      "Это единственный в мире экземпляр такого текста, что делает лингвистический анализ практически невозможным.",
+      "Некоторые считают его древнейшей в мире «печатной» формой, другие — ритуальным календарем или посланием."
+    ],
+    "image_prompt": "Ancient clay disc with mysterious spiral stamped symbols, resting on a stone pedestal in a ruined Minoan palace, glowing sunlight, cinematic, mysterious, photorealistic",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Эффект Манделы: сбой в матрице или ложная память?",
+    "facts": [
+      "Феномен, при котором большие группы людей помнят события или детали так, как они никогда не происходили (например, монокль у человечка Monopoly).",
+      "Одни объясняют это особенностями работы коллективной памяти и внушаемостью.",
+      "Другие (включая некоторых физиков) допускают, что это следы пересечения параллельных реальностей или квантовой неопределенности в макромире."
+    ],
+    "image_prompt": "Surreal cityscape with subtle glitches and distortions, people looking confused, glowing subtle alternate reality overlays, cinematic, mysterious, sci-fi art style",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Структура Ришат (Глаз Сахары): творение природы или древних?",
+    "facts": [
+      "Гигантская концентрическая формация в пустыне Сахара диаметром 40 км, видимая из космоса.",
+      "Идеальные круги и геологические слои породили теории о том, что это остатки древнего мегаполиса (возможно, легендарной Атлантиды, описанной Платоном).",
+      "Официальная наука настаивает на эрозионном происхождении, но симметрия структуры продолжает ставить вопросы."
+    ],
+    "image_prompt": "Aerial view of the massive Eye of Sahara desert formation, glowing concentric rings, ancient mystical energy lines subtly visible, cinematic, highly detailed, photorealistic",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Нан Мадол: тихоокеанская Венеция из базальта",
+    "facts": [
+      "Церемониальный центр на Микронезии, построенный на искусственных островах из гигантских базальтовых бревен весом до 50 тонн.",
+      "Местные легенды гласят, что камни были подняты в воздух с помощью звуковой левитации двумя магами-близнецами.",
+      "Никаких следов инструментов или карьеров, откуда брали камень, не найдено."
+    ],
+    "image_prompt": "Ancient ruined city built on water with massive dark basalt log walls, misty tropical ocean background, glowing mystical energy, cinematic, mysterious, highly detailed",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Храм под лапами Сфинкса: запретная зона",
+    "facts": [
+      "Сейсмические исследования и георадары неоднократно указывали на наличие крупных искусственных пустот и залов под лапами и телом Сфинкса.",
+      "Эдгар Кейси предсказал, что именно там находится «Зал Записей» атлантов с историей человечества.",
+      "Любые попытки официальных раскопок в этой зоне категорически блокируются египетскими властями."
+    ],
+    "image_prompt": "Underground view beneath the Great Sphinx, revealing a massive hidden glowing chamber with ancient artifacts and scrolls, cinematic, mysterious, dramatic lighting",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Монумент Йонагуни: подводная пирамида Японии",
+    "facts": [
+      "Подводное образование у берегов острова Йонагуни, напоминающее гигантскую ступенчатую пирамиду с прямыми углами и террасами.",
+      "Некоторые геологи считают это природной игрой тектонических плит, но археологи указывают на следы обработки камня, характерные для древних цивилизаций.",
+      "Если это рукотворный объект, он ушел под воду более 10 000 лет назад, в конце последнего ледникового периода."
+    ],
+    "image_prompt": "Underwater view of massive ancient stone stepped pyramid structure, clear blue ocean water, sunlight rays piercing through, mysterious, cinematic, highly detailed",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Проект «Звездные врата»: шпионаж через астрал",
+    "facts": [
+      "Секретная программа правительства США (1970-1995), изучавшая возможность дистанционного наблюдения (remote viewing).",
+      "Экстрасенсы пытались «видеть» секретные объекты СССР и другие скрытые локации, используя только силу сознания.",
+      "Программа была закрыта из-за «непостоянных результатов», но рассекреченные отчеты содержат поразительно точные описания объектов."
+    ],
+    "image_prompt": "1970s dimly lit room, a person in deep trance with glowing ethereal projection of a distant secret facility appearing above their head, cinematic, mysterious, sci-fi realism",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Баальбек: камни, которые не может сдвинуть кран",
+    "facts": [
+      "Римский храм в Ливане, построенный на платформе из мегалитов, вес которых достигает 1000 тонн (Трилитон и «Камень беременной женщины»).",
+      "Современная инженерия не имеет кранов, способных безопасно поднять и установить такие блоки с той точностью, которая видна в кладке.",
+      "Как древние строители транспортировали и поднимали эти монолиты?"
+    ],
+    "image_prompt": "Massive ancient stone monoliths at Baalbek, glowing with subtle golden energy, dramatic sunset lighting, cinematic, mysterious, highly detailed photorealistic",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Пещера Кристаллов (Наика): смертельная красота",
+    "facts": [
+      "Мексиканская пещера, заполненная гигантскими селенитовыми кристаллами длиной до 12 метров и весом до 55 тонн.",
+      "Условия внутри: температура +58°C и влажность 99%. Человек может прожить там без специального костюма не более 10 минут.",
+      "Кристаллы росли в идеальных условиях сотни тысяч лет, создавая инопланетный пейзаж в недрах Земли."
+    ],
+    "image_prompt": "Vast underground cave filled with massive glowing translucent crystals, ethereal blue light, misty atmosphere, cinematic, mysterious, highly detailed, photorealistic",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Парижские катакомбы: город мертвых и тайные общества",
+    "facts": [
+      "Более 300 км туннелей под Парижем, хранящие останки 6 миллионов человек.",
+      "Официально открыта лишь крошечная часть. В закрытых зонах, как утверждают исследователи, находятся секретные залы, библиотеки и следы оккультных ритуалов.",
+      "Существуют легенды о том, что в глубине катакомб можно встретить потомков тех, кто там навсегда поселился."
+    ],
+    "image_prompt": "Dark endless underground tunnel walls made of human skulls and bones, a single flickering torch illuminating a mysterious hidden door, cinematic, eerie, highly detailed",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Фантомные конечности и зеркальные ящики Рамачандрана",
+    "facts": [
+      "Феномен, когда ампутированный человек продолжает чувствовать боль или движение в отсутствующей конечности.",
+      "Нейробиолог Вилейанур Рамачандран создал «зеркальный ящик», который обманывает мозг, заставляя его «видеть» утраченную руку.",
+      "Это доказывает, что наша карта тела в мозгу пластична, и реальность, которую мы чувствуем, легко поддается перепрограммированию."
+    ],
+    "image_prompt": "Surreal medical illustration of a person looking into a glowing mirror box, their reflection showing a complete glowing limb where an amputation occurred, cinematic, sci-fi",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Бермудский треугольник: научные гипотезы против мистики",
+    "facts": [
+      "Зона в Атлантическом океане, где якобы бесследно исчезают корабли и самолеты.",
+      "Современные науки предлагают экзотические, но реальные объяснения: выбросы метана со дна, снижающие плотность воды, или блуждающие волны-убийцы.",
+      "Однако статистика показывает, что процент происшествий там не выше, чем в любом другом оживленном районе океана. Так почему миф живет?"
+    ],
+    "image_prompt": "Mysterious ocean scene with a glowing swirling vortex in the water, a ship silhouette in the fog, dramatic stormy sky, cinematic, highly detailed, mysterious",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Водяной двигатель Стэнли Мейера",
+    "facts": [
+      "Американский изобретатель заявил, что создал автомобиль, работающий исключительно на воде, расщепляя её на водород и кислород с минимальными затратами энергии.",
+      "Он утверждал, что преодолел закон Фарадея об электролизе.",
+      "В 1998 году Мейер внезапно умер после ужина, заявив перед смертью, что его отравили. Чертежи и прототипы бесследно исчезли."
+    ],
+    "image_prompt": "Vintage car engine modified with glowing glass tubes filled with bubbling water, emitting clean blue energy, dark garage setting, cinematic, mysterious, photorealistic",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Эффект Хатчисона: левитация и сплавление металлов",
+    "facts": [
+      "Канадский любитель Джон Хатчисон в 1970-х случайно обнаружил, что электромагнитные поля определенной частоты заставляют предметы левитировать.",
+      "Металлы сплавлялись с деревом, как масло, а стекло не разбивалось при падении с высоты.",
+      "Несмотря на демонстрации, научное сообщество игнорирует эти явления, списывая их на фокусы или ошибки измерений."
+    ],
+    "image_prompt": "Chaotic laboratory scene with metal objects and glass levitating in mid-air, glowing electromagnetic fields, sparks, cinematic, mysterious, highly detailed sci-fi realism",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Тунгусский метеорит: взрыв без кратера",
+    "facts": [
+      "В 1908 году в Сибири произошел колоссальный взрыв, поваливший деревья на площади 2000 кв. км.",
+      "Главная загадка: отсутствие кратера и остатков метеоритного тела. Энергия взрыва оценивается в 10-40 мегатонн в тротиловом эквиваленте.",
+      "Среди гипотез: взрыв кометы, падение мини-черной дыры, испытание внеземного корабля или эксперимент Теслы с передачей энергии."
+    ],
+    "image_prompt": "Massive glowing explosion in a dense taiga forest, trees flattened in a radial pattern, ethereal light in the sky, cinematic, historical mystery, highly detailed",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Саксайуаман: каменная головоломка инков",
+    "facts": [
+      "Крепость в Перу, стены которой сложены из каменных блоков весом до 200 тонн.",
+      "Блоки имеют сложную многоугольную форму и подогнаны друг к другу так плотно, что между ними нельзя просунуть даже лезвие ножа.",
+      "Современные инженеры признают, что повторить такую кладку сегодня было бы крайне сложно, не говоря уже о методах её создания в XV веке."
+    ],
+    "image_prompt": "Massive ancient stone fortress wall with perfectly interlocking polygonal blocks, glowing golden hour sunlight, cinematic, mysterious, highly detailed photorealistic",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Опыт с двумя щелями: сознание влияет на материю?",
+    "facts": [
+      "Квантовый эксперимент, показывающий, что частицы (электроны, фотоны) ведут себя как волны, пока за ними не наблюдают.",
+      "В момент наблюдения (измерения) волновая функция «коллапсирует», и частица ведет себя как твердый объект.",
+      "Это породило гипотезу, что само сознание наблюдателя является необходимым фактором для формирования физической реальности."
+    ],
+    "image_prompt": "Abstract quantum physics visualization, glowing particles shifting between wave and solid forms, an ethereal eye observing, cinematic, mysterious, highly detailed sci-fi art",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Тайна исчезновения цивилизации майя",
+    "facts": [
+      "Высокоразвитая цивилизация с точнейшим календарем, знаниями астрономии и сложной письменностью внезапно оставила свои величественные города.",
+      "Джунгли поглотили пирамиды, а причины краха до сих пор дискутируются: засуха, перенаселение, войны или что-то более загадочное.",
+      "С помощью лидара под пологом джунглей продолжают находить гигантские, ранее неизвестные мегаполисы."
+    ],
+    "image_prompt": "Ancient Mayan pyramid overgrown with dense jungle, glowing mystical energy emanating from the top, misty atmospheric lighting, cinematic, mysterious, highly detailed",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Шумерский список царей: правители, жившие тысячи лет",
+    "facts": [
+      "Древний глиняный артефакт, перечисляющий правителей Шумера до и после Великого потопа.",
+      "Донапотопные цари, согласно тексту, правили по 20 000, 30 000 и даже 64 000 лет.",
+      "Историки считают это мифологией, но сторонники древних астронавтов видят в этом буквальное описание долгоживущих существ."
+    ],
+    "image_prompt": "Ancient glowing Sumerian clay tablet with cuneiform writing, resting on a stone altar, dramatic museum lighting, cinematic, mysterious, highly detailed",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Филиппинские рисовые террасы: инженерный парадокс",
+    "facts": [
+      "Террасы в Банауэ, вырубленные в горах более 2000 лет назад.",
+      "Если выстроить их в одну линию, они опояшут половину земного шара.",
+      "Построены без использования современных инструментов, с идеальной системой ирригации, работающей до сих пор, что ставит в тупик современных гидроинженеров."
+    ],
+    "image_prompt": "Massive ancient glowing green rice terraces carved into steep mountains, misty clouds, cinematic, mysterious, highly detailed photorealistic landscape",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Корабль-призрак «Мария Целеста»",
+    "facts": [
+      "В 1872 году судно было найдено дрейфующим в Атлантике в идеальном состоянии, с запасами еды и нетронутым грузом.",
+      "Команда и капитан бесследно исчезли. Шлюпка отсутствовала, но никаких следов борьбы или повреждения корабля не было.",
+      "Десятки теорий: от пиратства и морских чудовищ до выбросов метана и временных аномалий."
+    ],
+    "image_prompt": "Abandoned old wooden sailing ship drifting in a foggy calm ocean, eerie glowing mist, cinematic, mysterious, highly detailed, atmospheric",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Вимана: древнеиндийские летающие аппараты",
+    "facts": [
+      "В древних санскритских текстах (Махабхарата, Рамаяна) подробно описываются летающие дворцы и боевые машины.",
+      "Описания включают принципы полета, типы топлива и даже оружие, похожее на ядерное («огонь, который ярче тысячи солнц»).",
+      "Являются ли эти тексты чистой фантазией или искаженным воспоминанием о высокоразвитой древней технологии?"
+    ],
+    "image_prompt": "Ancient ornate flying machine (vimana) hovering above a historical Indian temple, glowing energy rings, cinematic, mystical, highly detailed, fantasy realism",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Пещера Мовиле: изолированная экосистема",
+    "facts": [
+      "Румынская пещера, изолированная от внешнего мира на 5,5 миллионов лет.",
+      "Атмосфера состоит из сероводорода и углекислого газа, смертельных для человека без защиты.",
+      "Тем не менее, внутри существует уникальная экосистема из 48 видов, 33 из которых не встречаются больше нигде на Земле, питаясь хемосинтезом."
+    ],
+    "image_prompt": "Dark underground cave with glowing bioluminescent alien-like creatures, toxic mist, cinematic, mysterious, highly detailed, sci-fi realism",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Артефакт Косо: свеча накаливания в древности?",
+    "facts": [
+      "В 1961 году в Калифорнии в геологической породе возрастом 500 000 лет был найден объект, оказавшийся современной свечой зажигания.",
+      "Как предмет индустриальной эпохи мог оказаться внутри камня, формировавшегося полмиллиона лет?",
+      "Это классический пример «неуместного артефакта» (OOPArt), бросающего вызов официальной хронологии."
+    ],
+    "image_prompt": "Close-up of a modern metallic spark plug embedded inside an ancient glowing rock, dramatic lighting, cinematic, mysterious, highly detailed photorealistic",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Тибетская практика сновидений (Йога снов)",
+    "facts": [
+      "Древняя практика, позволяющая монахам сохранять полное осознание во время сна и управлять сновидениями.",
+      "Цель не в развлечении, а в использовании состояния сна для духовной трансформации и подготовки к моменту смерти (Бардо).",
+      "Современная наука подтверждает, что практики осознанных сновидений меняют активность мозга, но уровень контроля тибетских монахов остается феноменальным."
+    ],
+    "image_prompt": "Monk sleeping peacefully in a dark temple, glowing ethereal dream world projecting above his head, cinematic, mystical, highly detailed, atmospheric",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Тайна рукописей Мертвого моря",
+    "facts": [
+      "Древнейшие библейские тексты, найденные в кувшинах в Кумранских пещерах в 1947 году.",
+      "Некоторые свитки содержат тексты, не вошедшие в канон, включая описания апокалиптических войн и странных небесных объектов.",
+      "До сих пор часть фрагментов остается нерасшифрованной или засекреченной Ватиканом и исследователями."
+    ],
+    "image_prompt": "Ancient glowing scrolls inside clay jars in a dark desert cave, dramatic shaft of light, cinematic, mysterious, highly detailed, historical realism",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Гипотеза мира-тюрьмы (Prison Planet)",
+    "facts": [
+      "Философская и эзотерическая концепция, согласно которой Земля является местом изоляции для сознаний.",
+      "Цикл реинкарнации рассматривается не как благо, а как система удержания, подпитывающаяся человеческими эмоциями.",
+      "Эта идея перекликается с гностическими учениями древности и современными теориями симуляции."
+    ],
+    "image_prompt": "Surreal view of Earth from space, surrounded by a faint glowing grid or cage, dark cosmic background, cinematic, mysterious, philosophical sci-fi art",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Окаменелости гигантов: скрытые находки",
+    "facts": [
+      "На протяжении XIX и начала XX века в газетах мира публиковались сообщения о раскопках скелетов людей ростом 3-5 метров.",
+      "Позже эти новости объявлялись мистификациями, а артефакты бесследно исчезали из музеев.",
+      "Существуют ли реальные археологические свидетельства существования расы гигантов, или это исключительно плод фольклора?"
+    ],
+    "image_prompt": "Archaeological dig site at night, revealing a massive glowing skeletal hand emerging from the earth, dramatic lighting, cinematic, mysterious, highly detailed",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Эксперимент «Филадельфия»: невидимый корабль",
+    "facts": [
+      "Городская легенда 1943 года о том, что ВМС США провели эксперимент по созданию поля невидимости на эсминце USS Eldridge.",
+      "Якобы корабль не только исчез из поля зрения, но и телепортировался в другой порт, а экипаж пострадал от побочных эффектов (сращивание с металлом, безумие).",
+      "Официально это отрицается, но история остается одним из самых стойких мифов о военных сверхтехнологиях."
+    ],
+    "image_prompt": "1940s naval warship surrounded by a glowing, distorting electromagnetic energy field, foggy harbor, cinematic, mysterious, sci-fi realism, dramatic lighting",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Звук, разрушающий материю: акустическая левитация",
+    "facts": [
+      "Современные лабораторные эксперименты доказали, что стоячие звуковые волны могут удерживать и перемещать капли воды и мелкие твердые объекты в воздухе.",
+      "Это дало новую жизнь древним гипотезам о том, что пирамиды и мегалиты строились не рабами, а с использованием резонансных звуковых технологий.",
+      "Звук может быть не просто волной, а инструментом манипуляции материей."
+    ],
+    "image_prompt": "Glowing small objects levitating in mid-air between two acoustic emitters, visible sound wave distortion, dark laboratory, cinematic, mysterious, highly detailed",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Тайны озера Байкал: подводные пирамиды?",
+    "facts": [
+      "Самое глубокое озеро мира хранит множество аномалий: от «блуждающих» островов до странных гидроакустических сигналов.",
+      "В 1990-х годах дайверы и эхолоты зафиксировали на дне структуры, напоминающие правильные пирамиды и стены.",
+      "Официальная наука списывает это на природные геологические формации, но споры не утихают."
+    ],
+    "image_prompt": "Underwater view of a mysterious geometric pyramid-like structure on the bottom of a deep clear lake, glowing faintly, cinematic, mysterious, highly detailed",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Проект «Синий луч»: теория глобального контроля",
+    "facts": [
+      "Конспирологическая теория, зародившаяся в 1990-х, о планах использования голографических проекций в небе для имитации религиозных или инопланетных событий.",
+      "Цель: создание глобальной паники для оправдания введения тоталитарного мирового правительства.",
+      "Хотя доказательств нет, развитие технологий дополненной реальности и дронов делает эту идею пугающе правдоподобной."
+    ],
+    "image_prompt": "Night sky over a city with a massive, eerie glowing holographic projection of an eye or symbol, cinematic, dystopian, mysterious, highly detailed sci-fi art",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Слепящий свет: феномен огненных шаров",
+    "facts": [
+      "По всему миру фиксируются свидетельства о «болотных огнях» или шаровых молниях, которые демонстрируют признаки разумного поведения.",
+      "Они могут преследовать людей, проникать в закрытые помещения и не подчиняются законам аэродинамики.",
+      "Некоторые исследователи полагают, что это проявление плазмоидов или даже неизвестных форм энергетической жизни."
+    ],
+    "image_prompt": "Dark misty forest at night, a glowing floating orb of blue and orange energy hovering above the ground, cinematic, mysterious, highly detailed, atmospheric",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Тайна исчезновения колонии Роанок",
+    "facts": [
+      "В 1587 году английская колония из 115 человек на острове Роанок (США) исчезла бесследно.",
+      "Единственной зацепкой было слово «CROATOAN», вырезанное на столбе, и отсутствие знаков борьбы.",
+      "Никаких тел или следов массового переселения найдено не было, что делает это одной из старейших загадок Америки."
+    ],
+    "image_prompt": "Abandoned wooden colonial settlement in a misty forest, a wooden post with the word CROATOAN carved into it, eerie glowing light, cinematic, mysterious",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Кристаллические черепа: технология или мистика?",
+    "facts": [
+      "Несколько черепов, вырезанных из цельного куска горного хрусталя, найденных в Центральной Америке.",
+      "Они обладают оптическими свойствами линз и, по легендам, способны хранить информацию или вызывать видения.",
+      "Современный анализ показывает следы обработки абразивными инструментами XIX века, но происхождение самых древних экземпляров остается спорным."
+    ],
+    "image_prompt": "Glowing translucent crystal skull resting on an ancient stone altar, refracting light into rainbows, dark temple background, cinematic, mysterious, highly detailed",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Война частот: как звук управляет толпой",
+    "facts": [
+      "Инфразвук (ниже 20 Гц) не слышен ухом, но вызывает чувство тревоги, паники или даже галлюцинации у людей.",
+      "Существуют неподтвержденные данные о разработке акустического оружия, способного рассеивать толпы или вызывать физический дискомфорт на расстоянии.",
+      "Где грань между защитой порядка и скрытым контролем над сознанием масс?"
+    ],
+    "image_prompt": "Abstract visualization of invisible glowing sound waves rippling through a crowd of shadowy figures, causing subtle distortion, cinematic, mysterious, sci-fi realism",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Тайна озера Лох-Несс: динозавр или геология?",
+    "facts": [
+      "Легенда о плезиозавре, выжившем в глубоком шотландском озере, существует веками.",
+      "Несмотря на множество сонарных исследований и знаменитое «фото хирурга» (признанное подделкой), аномальные гидроакустические сигналы фиксируются до сих пор.",
+      "Возможно, истина кроется не в монстре, а в уникальных сейсмических или оптических явлениях самого озера."
+    ],
+    "image_prompt": "Misty dark lake with a massive shadowy serpentine shape just beneath the surface, glowing faintly, atmospheric, cinematic, mysterious, highly detailed",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Мозг как квантовый компьютер: теория Пенроуза-Хамероффа",
+    "facts": [
+      "Нобелевский лауреат Роджер Пенроуз и анестезиолог Стюарт Хамерофф предложили теорию «Orch OR».",
+      "Они утверждают, что сознание возникает не из синаптических связей, а из квантовых вычислений внутри микротрубочек в нейронах.",
+      "Если это так, то человеческий разум фундаментально связан с самой структурой пространства-времени."
+    ],
+    "image_prompt": "Abstract glowing neural network in the shape of a human brain, with quantum particles and light swirling inside, dark background, cinematic, sci-fi, highly detailed",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Дверь в Ад (Дарваза): горящая уже 50 лет",
+    "facts": [
+      "Газовый кратер в Туркменистане, который горит непрерывно с 1971 года после неудачной советской буровой операции.",
+      "Местные называют его «Вратами в преисподнюю» из-за зловещего свечения и запаха серы.",
+      "Попытки потушить его до сих пор не увенчались успехом, и он стал мражным символом вмешательства человека в недра."
+    ],
+    "image_prompt": "Massive glowing fiery crater in a dark desert at night, intense orange flames illuminating the sky, cinematic, mysterious, highly detailed, photorealistic",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Тайна рукописи «Алхимический брак»",
+    "facts": [
+      "Одна из ключевых книг розенкрейцеров, полная сложных алхимических и астрономических символов.",
+      "Многие исследователи считают, что это не просто мистический трактат, а зашифрованная инструкция по духовной трансформации или даже описание реальных химических процессов.",
+      "Полный смысл текста остается предметом споров на протяжении 400 лет."
+    ],
+    "image_prompt": "Ancient glowing alchemical book open on a dark wooden desk, complex geometric symbols floating above the pages, candlelight, cinematic, mysterious",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Снежный человек: миф или реликтовый гоминид?",
+    "facts": [
+      "Тысячи свидетельств, отпечатки гигантских стоп и знаменитая пленка Паттерсона-Гимлина (1967).",
+      "Криптозоологи предполагают, что это может быть выживший вид гигантопитека или реликтовый неандерталец, адаптировавшийся к жизни в глухих лесах.",
+      "Несмотря на современные камеры и дроны, ни одного тела или четкого ДНК-образца так и не было получено."
+    ],
+    "image_prompt": "Massive shadowy humanoid figure standing in a dense misty forest, partially obscured by trees, glowing subtle eyes, cinematic, mysterious, highly detailed",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Пирамида Хеопса: точность, превосходящая современную",
+    "facts": [
+      "Основание пирамиды выровнено по сторонам света с точностью до 3/60 градуса.",
+      "Блоки подогнаны так плотно, что между ними нельзя просунуть лезвие бритвы, при весе каждого до 2,5 тонн.",
+      "Как древние египтяне без современных инструментов достигли такой точности, остается одним из величайших инженерных вопросов истории."
+    ],
+    "image_prompt": "Massive ancient Egyptian pyramid at sunset, glowing golden light, subtle geometric measurement lines overlaying the structure, cinematic, mysterious, highly detailed",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Феномен спонтанного возгорания человека",
+    "facts": [
+      "Редкие, но задокументированные случаи, когда тело человека сгорает дотла, оставляя нетронутыми окружающие легковоспламеняющиеся предметы.",
+      "Официальная наука объясняет это «эффектом фитиля» (одежда как фитиль, жир тела как воск), но эта теория не объясняет все случаи.",
+      "Мистики связывают это с экстремальными психоэмоциональными состояниями или энергетическими аномалиями."
+    ],
+    "image_prompt": "Eerie scene of a chair with glowing embers and ash, surrounded by completely untouched wooden furniture, dark room, cinematic, mysterious, highly detailed",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Тайны озера Титикака: подводные храмы",
+    "facts": [
+      "Самое высокогорное судоходное озеро в мире, святыня инков.",
+      "Подводные археологические экспедиции обнаружили на дне каменные стены, террасы и дорогу, уходящую в глубину.",
+      "Это свидетельствует о том, что береговая линия в древности была значительно ниже, или о существовании затонувшей доинкской цивилизации."
+    ],
+    "image_prompt": "Underwater view of ancient stone temple ruins at the bottom of a deep clear lake, glowing faintly, cinematic, mysterious, highly detailed, photorealistic",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Проект «Монток»: эксперименты со временем",
+    "facts": [
+      "Конспирологическая теория, утверждающая, что после Филадельфийского эксперимента военные продолжили работу на базе Монток.",
+      "Якобы там проводились опыты по управлению временем, телепортации и контактам с инопланетными цивилизациями.",
+      "Несмотря на отсутствие официальных подтверждений, эта история стала культурным феноменом, перекликающимся с рассекреченными данными о необычных военных проектах."
+    ],
+    "image_prompt": "Dark underground military bunker with glowing futuristic machinery and a swirling portal of light, cinematic, mysterious, sci-fi realism, highly detailed",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Камни Ики: библиотека доисторической цивилизации?",
+    "facts": [
+      "Коллекция из тысяч андезитовых камней из Перу с гравировками, изображающими людей, сосуществующих с динозаврами, и сложные медицинские операции.",
+      "Официальная наука объявила их современной подделкой для туристов.",
+      "Однако некоторые исследователи указывают на следы древней патины на части камней, что ставит под сомнение их однозначное опровержение."
+    ],
+    "image_prompt": "Close-up of an ancient dark stone with intricate glowing engravings showing a human and a dinosaur, dramatic lighting, cinematic, mysterious, highly detailed",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Тайна исчезновения самолета MH370",
+    "facts": [
+      "Один из самых масштабных и необъяснимых случаев в современной авиации: исчезновение Boeing 777 с 239 людьми в 2014 году.",
+      "Несмотря на самые масштабные поиски в истории, основные обломки так и не были найдены.",
+      "Это породило множество теорий: от угона и военной операции до попадания в пространственно-временную аномалию."
+    ],
+    "image_prompt": "Commercial airplane silhouette disappearing into a glowing, swirling vortex of clouds in the dark night sky, cinematic, mysterious, highly detailed, atmospheric",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Вечный огонь Баку: дар богов или газ?",
+    "facts": [
+      "Храм Атешгях в Азербайджане, где огонь горел непрерывно на протяжении столетий, питаясь природным газом, выходящим из трещин в земле.",
+      "Это место было центром поклонения зороастрийцев, считавших огонь проявлением божественной энергии.",
+      "Сегодня огонь гаснет из-за истощения месторождения, напоминая о хрупкости природных чудес."
+    ],
+    "image_prompt": "Ancient stone temple at night with a massive, glowing eternal fire burning brightly in the center, dramatic lighting, cinematic, mysterious, highly detailed",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Гиперборея: миф или реальная арктическая цивилизация?",
+    "facts": [
+      "Древнегреческие источники описывали народ, живущий «за северным ветром», в условиях вечного благоденствия и долголетия.",
+      "Некоторые исследователи связывают это с реальными археологическими находками в Арктике и изменением климата в прошлом.",
+      "Существовала ли высокоразвитая культура на севере, которая погибла при сдвиге полюсов?"
+    ],
+    "image_prompt": "Ancient mystical city with glowing towers situated in a snowy arctic landscape, aurora borealis in the sky, cinematic, mysterious, fantasy realism, highly detailed",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Эффект плацебо и сила веры в исцеление",
+    "facts": [
+      "Медицина документально подтверждает случаи, когда пациенты исцелялись от тяжелых болезней, принимая пустышки, искренне веря в их эффективность.",
+      "Это доказывает, что мозг способен запускать мощнейшие биохимические процессы самоисцеления, управляемые исключительно ожиданием и верой.",
+      "Где проходит граница между реальной медициной и неиспользованным потенциалом человеческого сознания?"
+    ],
+    "image_prompt": "Abstract glowing human silhouette with a bright, warm light radiating from the brain and heart, dark background, cinematic, mysterious, sci-fi medical art",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Тайна каменных шаров Коста-Рики",
+    "facts": [
+      "Сотни идеальных каменных сфер, разбросанных по джунглям Коста-Рики, созданных доколумбовыми культурами.",
+      "Некоторые шары достигают 2,5 метров в диаметре и весят 16 тонн, при этом их сферичность почти идеальна.",
+      "Их назначение (астрономический календарь, маркеры территории или символы власти) до сих пор точно не установлено."
+    ],
+    "image_prompt": "Massive perfectly round ancient stone spheres scattered in a misty tropical jungle, glowing faintly, cinematic, mysterious, highly detailed, photorealistic",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Загадка «Голоса из ниоткуда» (Sky Trumpets)",
+    "facts": [
+      "В последние годы по всему миру фиксируются сообщения о странных трубных или механических звуках, доносящихся с неба.",
+      "Официальные объяснения варьируются от сейсмической активности и атмосферных явлений до военных учений.",
+      "Однако синхронность появления этих звуков в разных уголках планеты порождает теории о скрытых геофизических процессах или техногенных источниках."
+    ],
+    "image_prompt": "Dramatic cloudy sky over a city with visible glowing sound waves rippling through the air, people looking up in awe, cinematic, mysterious, highly detailed",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Тайны библиотеки Ивана Грозного (Либерия)",
+    "facts": [
+      "Легендарное собрание древних книг и рукописей, якобы спрятанное в подземельях Московского Кремля.",
+      "Согласно преданиям, там могли находиться уникальные тексты античности, о которых современная наука не имеет представления.",
+      "Многочисленные поиски не дали результатов, но аномалии в подвалах Кремля, фиксируемые георадарами, продолжают подпитывать этот миф."
+    ],
+    "image_prompt": "Dark underground vault filled with ancient glowing scrolls and books, stone walls, dramatic torchlight, cinematic, mysterious, highly detailed, historical realism",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Феномен «Зеленого луча» при закате",
+    "facts": [
+      "Редкое оптическое явление, когда на мгновение после захода солнца на горизонте вспыхивает яркий зеленый свет.",
+      "Древние мореплаватели считали это знаком богов или предвестником удачи.",
+      "Наука объясняет это рефракцией света в атмосфере, но зрелище до сих пор выглядит как нечто мистическое и неземное."
+    ],
+    "image_prompt": "Dramatic ocean sunset with a brilliant, glowing green flash of light on the horizon, cinematic, mysterious, highly detailed, photorealistic",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Тайна пирамиды Луны в Теотиуакане",
+    "facts": [
+      "Древний мексиканский город, чьи строители до сих пор неизвестны (ацтеки лишь нашли его уже заброшенным).",
+      "Под пирамидами обнаружены сложные туннели, заполненные ртутью, которая, возможно, имитировала подземные реки в сакральных представлениях.",
+      "Высокая концентрация жидкого металла в закрытом пространстве ставит вопросы о технологических или ритуальных целях древних инженеров."
+    ],
+    "image_prompt": "Underground tunnel beneath an ancient pyramid, glowing pools of liquid mercury, dramatic lighting, cinematic, mysterious, highly detailed, photorealistic",
+    "platforms": ["tg", "max"]
+  },
+  {
+    "topic": "Сознание растений: разум без мозга",
+    "facts": [
+      "Современные исследования показывают, что растения способны общаться через грибные сети (микоpизу), реагировать на звук и даже «помнить» стресс.",
+      "Они выделяют химические сигналы, предупреждая соседей об опасности, и меняют рост в ответ на музыку.",
+      "Это заставляет пересмотреть наше понимание интеллекта: возможно, сознание не требует мозга в привычном нам понимании."
+    ],
+    "image_prompt": "Glowing intricate root system of a tree underground, pulsing with ethereal light and energy connections, cinematic, mysterious, highly detailed, sci-fi nature art",
+    "platforms": ["tg", "max"]
+  }
+    ]
