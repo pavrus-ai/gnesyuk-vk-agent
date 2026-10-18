@@ -1,10 +1,9 @@
 name: Gnesyuk VK Agent
-
 on:
   schedule:
-    - cron: "0 3 * * *"          # ПУБЛИКАЦИЯ: пост + одна попытка картинки
-    - cron: "0 9,15,21 * * *"    # ТИКИ: барометр флуда + докрепление картинки
-  workflow_dispatch:              # ручной запуск = режим публикации
+    - cron: "0 3 * * *"          # ПУБЛИКАЦИЯ: 06:00 МСК
+    - cron: "0 9,15,21 * * *"    # ТИКИ: докрепление картинок ВК
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -13,21 +12,17 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
       - name: Install dependencies
         run: pip install requests Pillow
-
-      - name: Run book agent
+      - name: Run agent
         env:
           SCHEDULE: ${{ github.event.schedule }}
           TEST_IMAGE: ${{ vars.TEST_IMAGE }}
@@ -35,7 +30,6 @@ jobs:
           VK_TOKEN: ${{ secrets.VK_TOKEN }}
           VK_USER_TOKEN: ${{ secrets.VK_USER_TOKEN }}
           VK_GROUP_ID: ${{ secrets.VK_GROUP_ID }}
-          VK_ALBUM_ID: ${{ secrets.VK_ALBUM_ID }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           MAX_BOT_TOKEN: ${{ secrets.MAX_BOT_TOKEN }}
@@ -45,24 +39,15 @@ jobs:
           OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
           GROQ_KEY: ${{ secrets.GROQ_KEY }}
           GROQ_KEY2: ${{ secrets.GROQ_KEY2 }}
-          OPENROUTER_KEY: ${{ secrets.OPENROUTER_KEY }}
-          OPENROUTER_KEY2: ${{ secrets.OPENROUTER_KEY2 }}
-          CEREBRAS_KEY: ${{ secrets.CEREBRAS_KEY }}
-          MISTRAL_KEY: ${{ secrets.MISTRAL_KEY }}
         run: python agent.py
-
       - name: Commit caches
         if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          for f in vk_att.json pending_attach.json; do
-            if [ -f "$f" ]; then git add "$f"; fi
-          done
-          if [ -d img ]; then git add img/; fi
+          for f in vk_att.json pending_attach.json; do [ -f "$f" ] && git add "$f"; done
+          [ -d img ] && git add img/
           if ! git diff --quiet || ! git diff --staged --quiet; then
-            git commit -m "chore: book caches [skip ci]"
+            git commit -m "chore: caches [skip ci]"
             git push
-          else
-            echo "Коммитить нечего"
           fi
