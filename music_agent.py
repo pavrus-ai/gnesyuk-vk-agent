@@ -19,7 +19,27 @@ PUBLISH_CRON = "30 6 * * *"  # 09:30 МСК
 def log(msg):
     print(msg, flush=True)
 
-log("🎵 Музыкальный агент инициализирован (v3.16: детальная диагностика обложек + фолбэк публикации без фото)")
+log("🎵 Музыкальный агент инициализирован (v3.17: авто-поиск обложек по транслитерации + барометр флуда + pending)")
+
+# ============================================================
+# Транслитерация для авто-поиска обложек
+# ============================================================
+def transliterate_rus_to_lat(text):
+    """Преобразует русское название альбома в имя файла обложки (латиница)."""
+    mapping = {
+        'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo',
+        'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
+        'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
+        'ф': 'f', 'х': 'kh', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'shch',
+        'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya',
+        ' ': '-', ':': '', "'": '', '"': '', '(': '', ')': '', '/': '-',
+    }
+    text = text.lower().strip()
+    result = ''.join(mapping.get(c, c) for c in text)
+    # Убираем двойные дефисы и пробелы
+    while '--' in result:
+        result = result.replace('--', '-')
+    return result.strip('-')
 
 # ============================================================
 # ВК API с обработкой флуда
@@ -32,7 +52,7 @@ def vk_call(method, params=None, token=None, retries=1):
         try:
             r = requests.post(VK_API + method, data=p, timeout=30).json()
         except Exception as e:
-            log(f"⚠️ VK {method}: сеть {e}")
+            log(f"️ VK {method}: сеть {e}")
             time.sleep(5 * (attempt + 1))
             continue
         if "error" in r:
@@ -42,22 +62,24 @@ def vk_call(method, params=None, token=None, retries=1):
                 log(f"⏳ VK Flood control на {method}: жду {delay} сек (попытка {attempt+1}/{retries})...")
                 time.sleep(delay)
                 continue
-            log(f"⚠️ VK {method}: {str(err)[:150]}")
+            log(f"️ VK {method}: {str(err)[:150]}")
             return None
         return r.get("response")
     log(f"❌ VK {method}: флуд-контроль не отпустил за {retries} попыток")
     return None
 
 def flood_probe():
+    """Барометр флуда: ОДИН вызов, проверяет доступность загрузки."""
     log("🌡 Проверяю барометр флуда для музыки...")
     srv = vk_call("photos.getWallUploadServer", 
                   {"owner_id": "-" + VK_GROUP_ID}, 
                   token=VK_USER_TOKEN, retries=1)
     ok = bool(srv and "upload_url" in srv)
-    log(f"🌡 Барометр флуда: {'ЗЁЛЕНЫЙ — загрузка доступна' if ok else 'КРАСНЫЙ — флуд/кулдаун'}")
+    log(f" Барометр флуда: {'ЗЁЛЕНЫЙ — загрузка доступна' if ok else 'КРАСНЫЙ — флуд/кулдаун'}")
     return ok, srv
 
 def finish_upload(srv, img_bytes):
+    """Загрузка фото по уже полученному upload_url."""
     try:
         r = requests.post(srv["upload_url"],
                          files={"photo": ("cover.jpg", img_bytes, "image/jpeg")},
@@ -110,7 +132,7 @@ def save_covers_cache(cache):
         json.dump(cache, open(COVERS_CACHE, "w", encoding="utf-8"), ensure_ascii=False)
         log(f"💾 Кэш обложек сохранён: {len(cache)} записей")
     except Exception as e:
-        log(f"⚠️ Кэш обложек: {e}")
+        log(f"️ Кэш обложек: {e}")
 
 def get_cover_from_cache(album_title):
     cache = load_covers_cache()
@@ -134,7 +156,7 @@ def save_pending(track_info, cover_path):
                   open(PENDING_MUSIC, "w", encoding="utf-8"), ensure_ascii=False)
         log(f"💾 pending_music.json создан: трек ждёт публикации")
     except Exception as e:
-        log(f"⚠️ pending music: {e}")
+        log(f"️ pending music: {e}")
 
 def load_pending():
     try:
@@ -164,28 +186,44 @@ def load_music():
         return None
 
 def get_random_track(music_data):
+    """Выбирает случайный трек из альбомов/EP/синглов."""
     tracks = []
+    
+    # Альбомы
     for album in music_data.get("albums", []):
         for track in album.get("tracks", []):
             tracks.append({
-                "type": "album", "album_title": album.get("title", ""),
-                "track_title": track.get("title", ""), "artist": track.get("artist", album.get("artist", "")),
-                "audio_id": track.get("audio_id", ""), "cover_url": album.get("cover_url", ""),
+                "type": "album",
+                "album_title": album.get("title", ""),
+                "track_title": track.get("title", ""),
+                "artist": track.get("artist", album.get("artist", "")),
+                "audio_id": track.get("audio_id", ""),
+                "cover_url": album.get("cover_url", ""),
                 "cover_file": album.get("cover_file", "")
             })
+    
+    # EP
     for ep in music_data.get("eps", []):
         for track in ep.get("tracks", []):
             tracks.append({
-                "type": "ep", "album_title": ep.get("title", ""),
-                "track_title": track.get("title", ""), "artist": track.get("artist", ep.get("artist", "")),
-                "audio_id": track.get("audio_id", ""), "cover_url": ep.get("cover_url", ""),
+                "type": "ep",
+                "album_title": ep.get("title", ""),
+                "track_title": track.get("title", ""),
+                "artist": track.get("artist", ep.get("artist", "")),
+                "audio_id": track.get("audio_id", ""),
+                "cover_url": ep.get("cover_url", ""),
                 "cover_file": ep.get("cover_file", "")
             })
+    
+    # Синглы
     for single in music_data.get("singles", []):
         tracks.append({
-            "type": "single", "album_title": single.get("title", ""),
-            "track_title": single.get("title", ""), "artist": single.get("artist", ""),
-            "audio_id": single.get("audio_id", ""), "cover_url": single.get("cover_url", ""),
+            "type": "single",
+            "album_title": single.get("title", ""),
+            "track_title": single.get("title", ""),
+            "artist": single.get("artist", ""),
+            "audio_id": single.get("audio_id", ""),
+            "cover_url": single.get("cover_url", ""),
             "cover_file": single.get("cover_file", "")
         })
     
@@ -194,45 +232,53 @@ def get_random_track(music_data):
     return random.choice(tracks)
 
 def prepare_cover(track_info):
-    """v3.16: Детальная диагностика получения обложки."""
+    """v3.17: Авто-поиск обложки по названию альбома (рус→латиница)."""
     album_title = track_info.get("album_title", "Unknown")
     
-    # 1. Кэш
+    # 1. Сначала проверяем кэш
     cached_att = get_cover_from_cache(album_title)
     if cached_att:
         return cached_att, None
     
-    # 2. Локальный файл
+    # 2. Если в music.json есть явный путь — используем его
     cover_file = track_info.get("cover_file", "")
-    if cover_file:
-        if os.path.exists(cover_file):
-            with open(cover_file, "rb") as f:
-                img_bytes = f.read()
-            log(f"🖼 Обложка прочитана из файла: {cover_file} ({len(img_bytes)} байт)")
-            return None, img_bytes
-        else:
-            log(f"⚠️ Файл обложки не найден по пути: {cover_file}")
-    else:
-        log("ℹ️ Поле cover_file в music.json пустое")
+    if cover_file and os.path.exists(cover_file):
+        with open(cover_file, "rb") as f:
+            img_bytes = f.read()
+        log(f"✅ Обложка найдена по cover_file: {cover_file}")
+        return None, img_bytes
     
-    # 3. URL
+    # 3. Авто-поиск: преобразуем название альбома в имя файла
+    album_slug = transliterate_rus_to_lat(album_title)
+    possible_paths = [
+        f"covers/{album_slug}.jpg",
+        f"covers/{album_slug}.png",
+        f"covers/{album_slug}.jpeg",
+    ]
+    
+    for cover_path in possible_paths:
+        if os.path.exists(cover_path):
+            log(f"✅ Обложка найдена авто-поиском: {cover_path}")
+            with open(cover_path, "rb") as f:
+                img_bytes = f.read()
+            # Сохраняем путь в track_info для будущего использования
+            track_info["cover_file"] = cover_path
+            return None, img_bytes
+    
+    # 4. Пробуем скачать по URL (если есть в music.json)
     cover_url = track_info.get("cover_url", "")
     if cover_url:
         try:
-            log(f"🌐 Пробую скачать обложку по URL: {cover_url}")
+            log(f"🌐 Скачиваем обложку по URL: {cover_url}")
             r = requests.get(cover_url, timeout=60)
             if r.status_code == 200:
                 img_bytes = r.content
-                log(f"✅ Обложка успешно скачана ({len(img_bytes)} байт)")
+                log(f"✅ Обложка скачана ({len(img_bytes)} байт)")
                 return None, img_bytes
-            else:
-                log(f"⚠️ Ошибка скачивания обложки: HTTP {r.status_code}")
         except Exception as e:
-            log(f"⚠️ Исключение при скачивании обложки: {e}")
-    else:
-        log("ℹ️ Поле cover_url в music.json пустое")
+            log(f"⚠️ Ошибка скачивания: {e}")
     
-    log(f"❌ Не удалось получить обложку для «{album_title}». Проверьте music.json.")
+    log(f"❌ Обложка не найдена для альбома «{album_title}» (ожидался: covers/{album_slug}.jpg)")
     return None, None
 
 # ============================================================
@@ -248,30 +294,35 @@ def run_tick():
     track_info = pend.get("track", {})
     cover_path = pend.get("cover_path", "")
     
+    # Проверяем барометр
     green, srv = flood_probe()
     if not green:
         log("⏳ Флуд красный — pending music ждёт следующего тика")
         return True
     
+    # Загружаем обложку
     img_bytes = None
     if cover_path and os.path.exists(cover_path):
         with open(cover_path, "rb") as f:
             img_bytes = f.read()
-        log(f"🖼 Обложка загружена из pending: {cover_path}")
+        log(f" Обложка загружена из pending: {cover_path}, {len(img_bytes)} байт")
     else:
         log(f"⚠️ Файл {cover_path} не найден — сбрасываю pending")
         clear_pending()
         return True
     
+    # Загружаем в ВК
     att = finish_upload(srv, img_bytes)
     if not att:
         log("⚠️ Загрузка обложки не удалась — жду следующий тик")
         return True
     
+    # Сохраняем в кэш
     album_title = track_info.get("album_title", "")
     if album_title:
         save_cover_to_cache(album_title, att)
     
+    # Публикуем пост
     artist = track_info.get("artist", "")
     track_title = track_info.get("track_title", "")
     audio_id = track_info.get("audio_id", "")
@@ -281,19 +332,22 @@ def run_tick():
     
     res = vk_post_wall(caption, attachments)
     if res:
-        log("✅ ВК: pending music опубликован")
+        log(f"✅ ВК: pending music опубликован")
         clear_pending()
         return True
-    return False
+    else:
+        log("⚠️ Публикация pending music не удалась")
+        return False
 
 # ============================================================
 # Режим публикации
 # ============================================================
 def run_publish():
-    log("📢 Режим: ПУБЛИКАЦИЯ (музыка)")
+    log(" Режим: ПУБЛИКАЦИЯ (музыка)")
     
     music_data = load_music()
     if not music_data:
+        log("❌ Нет данных о музыке")
         return False
     
     track_info = get_random_track(music_data)
@@ -308,11 +362,14 @@ def run_publish():
     
     log(f"🎵 Выбран трек: {artist} — {track_title} (альбом: {album_title})")
     
+    # Подготавливаем обложку (с авто-поиском по транслитерации)
     att, img_bytes = prepare_cover(track_info)
     
     if att:
+        # Обложка из кэша — сразу публикуем
         log("✅ Используем обложку из кэша")
     elif img_bytes:
+        # Обложка есть, но нужно загрузить — проверяем флуд
         green, srv = flood_probe()
         if not green:
             log("⏳ Флуд красный — сохраняю трек в pending для следующей попытки")
@@ -323,6 +380,7 @@ def run_publish():
             save_pending(track_info, cover_path)
             return True
         
+        # Флуд зелёный — загружаем
         att = finish_upload(srv, img_bytes)
         if att:
             save_cover_to_cache(album_title, att)
