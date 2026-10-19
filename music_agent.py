@@ -19,7 +19,7 @@ PUBLISH_CRON = "30 6 * * *"  # 09:30 МСК
 def log(msg):
     print(msg, flush=True)
 
-log("🎵 Музыкальный агент инициализирован (v3.18: поддержка metadata + авто-поиск обложек + правильный audio_id)")
+log("🎵 Музыкальный агент инициализирован (v3.19: барометр флуда + pending + авто-поиск обложек)")
 
 # ============================================================
 # Транслитерация для авто-поиска обложек
@@ -44,6 +44,7 @@ def transliterate_rus_to_lat(text):
 # ВК API с обработкой флуда
 # ============================================================
 def vk_call(method, params=None, token=None, retries=1):
+    """Базовый вызов VK API. retries=1 для барометра, больше — для важных операций."""
     p = dict(params or {})
     p["access_token"] = token or VK_TOKEN
     p["v"] = VK_V
@@ -58,7 +59,7 @@ def vk_call(method, params=None, token=None, retries=1):
             err = r["error"]
             if err.get("error_code") == 9:
                 delay = 15 * (attempt + 1)
-                log(f" VK Flood control на {method}: жду {delay} сек (попытка {attempt+1}/{retries})...")
+                log(f"⏳ VK Flood control на {method}: жду {delay} сек (попытка {attempt+1}/{retries})...")
                 time.sleep(delay)
                 continue
             log(f"⚠️ VK {method}: {str(err)[:150]}")
@@ -68,21 +69,23 @@ def vk_call(method, params=None, token=None, retries=1):
     return None
 
 def flood_probe():
+    """Барометр флуда: ОДИН вызов, проверяет доступность wall.post."""
     log("🌡 Проверяю барометр флуда для музыки...")
     srv = vk_call("photos.getWallUploadServer", 
                   {"owner_id": "-" + VK_GROUP_ID}, 
                   token=VK_USER_TOKEN, retries=1)
     ok = bool(srv and "upload_url" in srv)
-    log(f"🌡 Барометр флуда: {'ЗЁЛЕНЫЙ — загрузка доступна' if ok else 'КРАСНЫЙ — флуд/кулдаун'}")
+    log(f" Барометр флуда: {'ЗЁЛЕНЫЙ — загрузка доступна' if ok else 'КРАСНЫЙ — флуд/кулдаун'}")
     return ok, srv
 
 def finish_upload(srv, img_bytes):
+    """Загрузка фото по уже полученному upload_url."""
     try:
         r = requests.post(srv["upload_url"],
                          files={"photo": ("cover.jpg", img_bytes, "image/jpeg")},
                          timeout=120).json()
     except Exception as e:
-        log(f"️ ВК upload: ошибка POST: {e}")
+        log(f"⚠️ ВК upload: ошибка POST: {e}")
         return None
     if not (r.get("photo") and r.get("hash")):
         log(f"⚠️ ВК upload: пустой ответ: {str(r)[:120]}")
@@ -101,13 +104,17 @@ def finish_upload(srv, img_bytes):
     return att
 
 def vk_post_wall(text, attachment=None):
+    """Публикация поста на стене с обработкой флуда."""
     params = {"owner_id": "-" + VK_GROUP_ID, "message": text, "from_group": 1}
     if attachment:
         params["attachments"] = attachment
-    res = vk_call("wall.post", params)
+    
+    # Пробуем с групповым токеном
+    res = vk_call("wall.post", params, token=VK_TOKEN, retries=2)
     if not res and VK_USER_TOKEN:
         log("⚠️ ВК: групповой токен не смог опубликовать — пробую юзер-токеном")
-        res = vk_call("wall.post", params, token=VK_USER_TOKEN)
+        res = vk_call("wall.post", params, token=VK_USER_TOKEN, retries=2)
+    
     if res:
         log(f"✅ ВК: пост опубликован: https://vk.com/wall-{VK_GROUP_ID}_{res.get('post_id')}")
         return res
@@ -129,7 +136,7 @@ def save_covers_cache(cache):
         json.dump(cache, open(COVERS_CACHE, "w", encoding="utf-8"), ensure_ascii=False)
         log(f"💾 Кэш обложек сохранён: {len(cache)} записей")
     except Exception as e:
-        log(f"⚠️ Кэш обложек: {e}")
+        log(f"️ Кэш обложек: {e}")
 
 def get_cover_from_cache(album_title):
     cache = load_covers_cache()
@@ -146,11 +153,15 @@ def save_cover_to_cache(album_title, att):
 # ============================================================
 # Pending (отложенная публикация)
 # ============================================================
-def save_pending(track_info, cover_path):
+def save_pending(track_info, att):
+    """Сохраняем трек в pending для допубликации на тике."""
     try:
-        json.dump({"track": track_info, "cover_path": cover_path, 
-                   "created": datetime.datetime.now().isoformat()},
-                  open(PENDING_MUSIC, "w", encoding="utf-8"), ensure_ascii=False)
+        data = {
+            "track": track_info,
+            "att": att,  # Если обложка уже загружена
+            "created": datetime.datetime.now().isoformat()
+        }
+        json.dump(data, open(PENDING_MUSIC, "w", encoding="utf-8"), ensure_ascii=False)
         log(f"💾 pending_music.json создан: трек ждёт публикации")
     except Exception as e:
         log(f"⚠️ pending music: {e}")
@@ -198,7 +209,7 @@ def get_random_track(music_data):
                 "type": "album",
                 "album_title": album.get("title", ""),
                 "track_title": track.get("title", ""),
-                "artist": default_artist,  # Берём из metadata
+                "artist": default_artist,
                 "audio_id": track.get("audio_id", ""),
                 "genre": album.get("genre", "")
             })
@@ -232,7 +243,7 @@ def get_random_track(music_data):
     return random.choice(tracks)
 
 def prepare_cover(track_info):
-    """v3.18: Авто-поиск обложки по названию альбома (рус→латиница)."""
+    """v3.19: Авто-поиск обложки по названию альбома (рус→латиница)."""
     album_title = track_info.get("album_title", "Unknown")
     
     # 1. Сначала проверяем кэш
@@ -269,38 +280,42 @@ def run_tick():
         return True
     
     track_info = pend.get("track", {})
-    cover_path = pend.get("cover_path", "")
+    att = pend.get("att", "")
     
+    # Проверяем барометр
     green, srv = flood_probe()
     if not green:
         log("⏳ Флуд красный — pending music ждёт следующего тика")
         return True
     
-    img_bytes = None
-    if cover_path and os.path.exists(cover_path):
-        with open(cover_path, "rb") as f:
-            img_bytes = f.read()
-        log(f"🖼 Обложка загружена из pending: {cover_path}, {len(img_bytes)} байт")
-    else:
-        log(f"⚠️ Файл {cover_path} не найден — сбрасываю pending")
-        clear_pending()
-        return True
-    
-    att = finish_upload(srv, img_bytes)
+    # Если обложка ещё не загружена — загружаем
     if not att:
-        log("⚠️ Загрузка обложки не удалась — жду следующий тик")
-        return True
+        cover_path = pend.get("cover_path", "")
+        if cover_path and os.path.exists(cover_path):
+            with open(cover_path, "rb") as f:
+                img_bytes = f.read()
+            att = finish_upload(srv, img_bytes)
+            if not att:
+                log("️ Загрузка обложки не удалась — жду следующий тик")
+                return True
+            album_title = track_info.get("album_title", "")
+            if album_title:
+                save_cover_to_cache(album_title, att)
     
-    album_title = track_info.get("album_title", "")
-    if album_title:
-        save_cover_to_cache(album_title, att)
-    
+    # Публикуем пост
     artist = track_info.get("artist", "")
     track_title = track_info.get("track_title", "")
+    album_title = track_info.get("album_title", "")
     audio_id = track_info.get("audio_id", "")
+    genre = track_info.get("genre", "")
     
-    caption = f" {artist} — {track_title}"
-    # audio_id уже содержит префикс "audio-", используем как есть
+    caption_parts = [f" {artist} — {track_title}"]
+    if album_title:
+        caption_parts.append(f"💿 Альбом: «{album_title}»")
+    if genre:
+        caption_parts.append(f"🎼 Жанр: {genre}")
+    
+    caption = "\n".join(caption_parts)
     attachments = f"{att},{audio_id}" if att and audio_id else audio_id
     
     res = vk_post_wall(caption, attachments if attachments else None)
@@ -309,7 +324,7 @@ def run_tick():
         clear_pending()
         return True
     else:
-        log("⚠️ Публикация pending music не удалась")
+        log("️ Публикация pending music не удалась — флуд держится")
         return False
 
 # ============================================================
@@ -343,35 +358,49 @@ def run_publish():
     if att:
         log("✅ Используем обложку из кэша")
     elif img_bytes:
+        # Обложка есть, но нужно загрузить — проверяем флуд
         green, srv = flood_probe()
         if not green:
             log("⏳ Флуд красный — сохраняю трек в pending для следующей попытки")
+            # Сохраняем обложку в файл для будущего использования
             cover_path = f"covers/pending_{album_title.replace(' ', '_')}.jpg"
             os.makedirs("covers", exist_ok=True)
             with open(cover_path, "wb") as f:
                 f.write(img_bytes)
-            save_pending(track_info, cover_path)
+            save_pending(track_info, "")
+            # Сохраняем путь в pending
+            pend = load_pending()
+            if pend:
+                pend["cover_path"] = cover_path
+                json.dump(pend, open(PENDING_MUSIC, "w", encoding="utf-8"), ensure_ascii=False)
             return True
         
+        # Флуд зелёный — загружаем
         att = finish_upload(srv, img_bytes)
         if att:
             save_cover_to_cache(album_title, att)
         else:
             log("⚠️ Загрузка обложки не удалась, пробую опубликовать без фото")
     else:
-        log("️ Публикую пост БЕЗ обложки (так как фото не найдено)")
+        log("⚠️ Публикую пост БЕЗ обложки (так как фото не найдено)")
     
     # Формируем caption с информацией об альбоме и жанре
     caption_parts = [f"🎵 {artist} — {track_title}"]
     if album_title:
         caption_parts.append(f"💿 Альбом: «{album_title}»")
     if genre:
-        caption_parts.append(f"🎼 Жанр: {genre}")
+        caption_parts.append(f" Жанр: {genre}")
     
     caption = "\n".join(caption_parts)
     
+    # Проверяем барометр флуда перед публикацией
+    green, srv = flood_probe()
+    if not green:
+        log("⏳ Флуд красный — сохраняю трек в pending")
+        save_pending(track_info, att if att else "")
+        return True
+    
     # Формируем attachments
-    # audio_id уже содержит префикс "audio-", используем как есть
     attachments = f"{att},{audio_id}" if att and audio_id else audio_id
     
     res = vk_post_wall(caption, attachments if attachments else None)
@@ -380,7 +409,8 @@ def run_publish():
         log(f"✅ Готово: {album_title} (опубликовано{' с обложкой' if att else ' без обложки'})")
         return True
     else:
-        log("❌ Публикация не удалась")
+        log("❌ Публикация не удалась — сохраняю в pending")
+        save_pending(track_info, att if att else "")
         return False
 
 # ============================================================
@@ -388,7 +418,7 @@ def run_publish():
 # ============================================================
 def main():
     if not VK_TOKEN or not VK_GROUP_ID:
-        log("⚠️ Нет VK_TOKEN/VK_GROUP_ID")
+        log("️ Нет VK_TOKEN/VK_GROUP_ID")
         return
     
     mode = "publish" if (not SCHEDULE or SCHEDULE == PUBLISH_CRON) else "tick"
@@ -403,5 +433,5 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        log(f"❌ КРИТИЧЕСКАЯ ОШИБКА: {e}")
+        log(f" КРИТИЧЕСКАЯ ОШИБКА: {e}")
         raise
