@@ -39,10 +39,27 @@ RU = "\n\nВАЖНО: Пиши ТОЛЬКО на русском языке."
 
 GROQ_MODELS = ["meta-llama/llama-4-scout-17b-16e-instruct", "meta-llama/llama-4-maverick-17b-128e-instruct", "openai/gpt-oss-120b", "llama-3.1-8b-instant"]
 
+# v23.2: ЖЁСТКИЙ запрет на клише и шаблонные фразы
+META_BAN = (
+    " СТРОГИЙ ЗАПРЕТ: НЕ включай в финальный текст служебные слова и метки: "
+    "«Эмоциональный крючок», «Крючок поста», «Длина поста», «Пост с отсылкой», "
+    "«Заголовок», «Title», «Caption», «Текст:», «Ответ:». "
+    "НЕ начинай пост с фраз: «Погрузитесь в», «Откройте для себя», «Узнайте», "
+    "«Представляем», «Встречайте», «Добро пожаловать», «Читайте», «Новый роман», "
+    "«Новая книга», «Новая глава», «Этот захватывающий», «Этот увлекательный». "
+    "НЕ начинай с названия книги или серии. "
+    "НЕ используй восклицательные знаки в первой строке. "
+    "НЕ делай коротких строк-подзаголовков без продолжения (вроде «Катакомбы Хургады» на отдельной строке). "
+    "Пиши сплошным связным текстом с абзацами. "
+    "Первая строка должна быть КОНКРЕТНОЙ СЦЕНОЙ или ДЕЙСТВИЕМ героя. "
+    "ПРИМЕР ХОРОШЕГО НАЧАЛА: «Владимир Тихонин расследует покушение...» "
+    "ПРИМЕР ПЛОХОГО НАЧАЛА: «Погрузитесь в тайну древних книг!» "
+)
+
 def log(msg):
     print(msg, flush=True)
 
-log("Версия ℹ️ gnesyuk-vk-agent v23.2 (70% тайн / 30% книг; защита от мета-артефактов в тексте; MAX с полной диагностикой)")
+log("Версия ℹ️ gnesyuk-vk-agent v23.2 (70% тайн / 30% книг; защита от мета-артефактов и клише; MAX с полной диагностикой; картинки 800×800)")
 
 # ============================================================
 # ИИ-ТЕКСТ
@@ -75,7 +92,6 @@ def ai_text(prompt, minlen=300, rescue_min=200):
     def take(res, label):
         nonlocal best_res
         if not res: return None
-        # v23.2: чистим мета-артефакты из ответа ИИ
         res = _strip_meta(res)
         if len(res) >= minlen:
             log(f"✅ Успех: {label}, {len(res)} симв.")
@@ -112,7 +128,7 @@ def ai_text(prompt, minlen=300, rescue_min=200):
     return None
 
 def _strip_meta(text):
-    """v23.2: удаляет служебные метки, которые ИИ иногда включает в текст."""
+    """v23.2: удаляет служебные метки из ответа ИИ."""
     bad_prefixes = [
         "Эмоциональный крючок", "Крючок поста", "Длина поста", "Пост с отсылкой",
         "Пост:", "Текст:", "Ответ:", "Вот пост", "Вот текст",
@@ -132,24 +148,47 @@ def _strip_meta(text):
     return "\n".join(cleaned).strip()
 
 def _strip_subheadings(text):
-    """v23.2: убирает короткие строки-подзаголовки без продолжения (артефакты структуры)."""
+    """v23.2: убирает короткие строки-подзаголовки без продолжения."""
     lines = text.split("\n")
     cleaned = []
-    for i, line in enumerate(lines):
+    i = 0
+    while i < len(lines):
+        line = lines[i]
         stripped = line.strip()
         # Если строка короткая (до 40 симв), без знаков препинания в конце, и следующая строка — продолжение
-        if len(stripped) < 40 and stripped and not stripped[-1] in ".!?:…" and i + 1 < len(lines) and lines[i+1].strip():
-            # Склеиваем с следующей строкой через двоеточие или просто добавляем
+        if (len(stripped) < 40 and stripped and 
+            not stripped[-1] in ".!?:…" and 
+            i + 1 < len(lines) and lines[i+1].strip()):
             cleaned.append(stripped + ": " + lines[i+1].strip())
-            # Пропускаем следующую строку (она уже включена)
+            i += 2
             continue
         cleaned.append(line)
+        i += 1
     return "\n".join(cleaned).strip()
+
+def _fix_bad_opening(text):
+    """v23.2: вырезает первые строки с клише."""
+    bad_openings = [
+        "погрузитесь", "откройте", "узнайте", "представляем",
+        "встречайте", "добро пожаловать", "читайте", "новый роман",
+        "новая книга", "новая глава", "этот захватывающий", "этот увлекательный",
+        "погрузись", "открой для себя"
+    ]
+    lines = text.split("\n")
+    while lines:
+        first = lines[0].strip().lower()
+        if any(bad in first for bad in bad_openings):
+            log(f"🩹 Вырезана плохая первая строка: {lines[0][:80]}")
+            lines.pop(0)
+        else:
+            break
+    return "\n".join(lines).strip()
 
 def clean_txt(t):
     t = t.replace("**", "").replace("##", "").replace("#", "").strip()
     t = _strip_meta(t)
     t = _strip_subheadings(t)
+    t = _fix_bad_opening(t)
     return t
 
 def safe_trim(text, limit):
@@ -164,15 +203,6 @@ def safe_trim(text, limit):
 # ============================================================
 # ГЕНЕРАЦИЯ ПОСТОВ
 # ============================================================
-# v23.2: общий запрет мета-слов в промпте
-META_BAN = (
-    " СТРОГИЙ ЗАПРЕТ: НЕ включай в финальный текст служебные слова и метки: "
-    "«Эмоциональный крючок», «Крючок поста», «Длина поста», «Пост с отсылкой», "
-    "«Заголовок», «Title», «Caption», «Текст:», «Ответ:». "
-    "НЕ делай коротких строк-подзаголовков без продолжения (вроде «Катакомбы Хургады» на отдельной строке). "
-    "Пиши сплошным связным текстом с абзацами. "
-)
-
 def build_book_post(book, day):
     t, a, s = book["title"], book["about"], book["series"]
     prompt = (f"Напиши пост-анонс для соцсетей о романе Павла Гнесюка «{t}» (серия «{s}»). "
@@ -200,7 +230,7 @@ def build_mystery_post(mystery, day):
     return clean_txt(txt) if txt else f"Загадка: {topic}\n\n{mystery['facts'][0]}"
 
 # ============================================================
-# КАРТИНКИ
+# КАРТИНКИ (v23.2: размер 800×800 вместо 1024×1024)
 # ============================================================
 def image_stats(img_bytes):
     try:
@@ -227,19 +257,22 @@ def download_image(scene_text, seed):
         except Exception: pass
 
     try:
-        url = f"{POLLINATIONS_API}{requests.utils.quote(p_poll)}?nologo=true&seed={seed}&model=flux&width=1024&height=576"
+        url = f"{POLLINATIONS_API}{requests.utils.quote(p_poll)}?nologo=true&seed={seed}&model=flux&width=800&height=450"
         r = requests.get(url, timeout=240)
         if r.status_code == 200: return r.content
     except Exception: pass
     return None
 
 def convert_to_jpeg(img_bytes):
+    """v23.2: сжатие до 800×800 (было 1024×1024)."""
     try:
         im = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-        im.thumbnail((1024, 1024))
+        im.thumbnail((800, 800))  # было (1024, 1024)
         buf = io.BytesIO()
         im.save(buf, "JPEG", quality=85, optimize=True)
-        return buf.getvalue()
+        data = buf.getvalue()
+        log(f"🖼 Финал: {im.size[0]}x{im.size[1]}, {len(data)} байт")
+        return data
     except Exception:
         return img_bytes
 
@@ -337,7 +370,6 @@ def max_post(img_bytes, text):
         for hdr in headers_list:
             log(f"🔄 MAX: пробую {base} ...")
 
-            # Шаг 1: получаем URL для загрузки фото
             try:
                 up = requests.post(f"{base}/uploads", headers=hdr,
                                    params={"type": "image", "chat_id": chat_val},
@@ -352,7 +384,6 @@ def max_post(img_bytes, text):
                 log(f"   ⚠️ MAX: нет upload_url в ответе — пробую следующую базу")
                 continue
 
-            # Шаг 2: загружаем фото
             try:
                 ru = requests.post(up_url,
                                    files={"data": ("cover.jpg", img_bytes, "image/jpeg")},
@@ -362,7 +393,6 @@ def max_post(img_bytes, text):
                 log(f"   ⚠️ MAX upload фото ошибка: {e}")
                 continue
 
-            # Шаг 3: извлекаем токен вложения
             tok = None
             if isinstance(ru, dict):
                 ph = ru.get("photos") or {}
@@ -374,12 +404,11 @@ def max_post(img_bytes, text):
                 tok = tok or ru.get("token") or ru.get("file")
 
             if not tok:
-                log(f"   ️ MAX: токен вложения не найден — пробую следующую базу")
+                log(f"   ⚠️ MAX: токен вложения не найден — пробую следующую базу")
                 continue
 
             log(f"   ✅ MAX: токен вложения получен: {str(tok)[:30]}...")
 
-            # Шаг 4: отправляем сообщение
             try:
                 r = requests.post(f"{base}/messages", headers=hdr,
                                   params={"chat_id": chat_val},
@@ -443,7 +472,7 @@ def run_tick(day):
         else:
             log("⚠️ wall.edit не смог докрепить — попробуем в следующем тике")
     else:
-        log("️ Загрузка на зелёном барометре не удалась — жду следующий тик")
+        log("⚠️ Загрузка на зелёном барометре не удалась — жду следующий тик")
 
 # ============================================================
 # ГЛАВНАЯ ЛОГИКА v23.2
@@ -456,7 +485,7 @@ def main():
         run_tick(day)
         return
 
-    log(" Режим: ПУБЛИКАЦИЯ")
+    log("📢 Режим: ПУБЛИКАЦИЯ")
     
     # 1. Выбираем тип контента: 70% шанс на тайну, 30% на книгу
     is_mystery = random.random() < 0.7
@@ -487,7 +516,7 @@ def main():
     else:
         post = build_book_post(book_data, day)
         link = book_data.get("url", "")
-        link_part = f"\n\n Читайте на ЛитРес: {link}" if (link and LINK_IN_TG) else ""
+        link_part = f"\n\n📖 Читайте на ЛитРес: {link}" if (link and LINK_IN_TG) else ""
         tags = BOOK_TAGS
         img_prompt = post[:150]
 
@@ -496,7 +525,7 @@ def main():
     post = safe_trim(post, max_post_len)
     caption = post + link_part + "\n\n" + tags
     log(f"📝 Длина поста: {len(caption)} симв. (безопасно для TG)")
-    log(f"️ Крючок поста: {caption.split(chr(10))[0][:120]}")
+    log(f"✂️ Крючок поста: {caption.split(chr(10))[0][:120]}")
 
     # 4. Генерация и сохранение картинки
     img_bytes, img_file = None, ""
