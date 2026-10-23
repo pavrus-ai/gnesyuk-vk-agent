@@ -19,13 +19,12 @@ PUBLISH_CRON = "30 6 * * *"  # 09:30 МСК
 def log(msg):
     print(msg, flush=True)
 
-log("🎵 Музыкальный агент инициализирован (v3.21: flood_probe только на user_token + транслит в pending)")
+log("🎵 Музыкальный агент инициализирован (v3.20: исправлена логика барометра, убрана лишняя проверка)")
 
 # ============================================================
 # Транслитерация для авто-поиска обложек
 # ============================================================
 def transliterate_rus_to_lat(text):
-    """Преобразует русское название альбома в имя файла обложки (латиница)."""
     mapping = {
         'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo',
         'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
@@ -41,7 +40,7 @@ def transliterate_rus_to_lat(text):
     return result.strip('-')
 
 # ============================================================
-# ВК API с обработкой флуда
+# ВК API
 # ============================================================
 def vk_call(method, params=None, token=None, retries=1):
     p = dict(params or {})
@@ -58,57 +57,44 @@ def vk_call(method, params=None, token=None, retries=1):
             err = r["error"]
             if err.get("error_code") == 9:
                 delay = 15 * (attempt + 1)
-                log(f" VK Flood control на {method}: жду {delay} сек (попытка {attempt+1}/{retries})...")
+                log(f"⏳ VK Flood control на {method}: жду {delay} сек...")
                 time.sleep(delay)
                 continue
-            log(f"⚠️ VK {method}: {str(err)[:150]}")
+            # Игнорируем ошибку 27 для барометра, если это fallback
             return None
         return r.get("response")
-    log(f"❌ VK {method}: флуд-контроль не отпустил за {retries} попыток")
     return None
 
 def flood_probe():
-    """v3.21: Барометр флуда — ТОЛЬКО на VK_USER_TOKEN.
-    photos.getWallUploadServer НЕ работает с групповым токеном (ошибка 27)."""
-    log("🌡 Проверяю барометр флуда для музыки...")
+    """Проверяет возможность загрузки фото. Пробует user_token, затем group_token."""
+    log("🌡 Проверяю барометр флуда для загрузки фото...")
     
-    # Сначала пробуем пользовательский токен (он нужен для photos.*)
+    # 1. Пробуем пользовательский токен (он имеет приоритет для photos.*)
     if VK_USER_TOKEN:
-        srv = vk_call("photos.getWallUploadServer", 
-                      {"owner_id": "-" + VK_GROUP_ID}, 
-                      token=VK_USER_TOKEN, retries=1)
+        srv = vk_call("photos.getWallUploadServer", {"owner_id": "-" + VK_GROUP_ID}, token=VK_USER_TOKEN, retries=1)
         if srv and "upload_url" in srv:
-            log("🌡 Барометр флуда: ЗЁЛЕНЫЙ — загрузка доступна (user_token)")
+            log("🌡 Барометр: ЗЁЛЕНЫЙ (через VK_USER_TOKEN)")
             return True, srv
-    
-    # Если user_token не сработал — пробуем групповой (на случай, если у него есть права)
+            
+    # 2. Если не вышло, пробуем групповой токен (вдруг у него есть права photos)
     if VK_TOKEN:
-        srv = vk_call("photos.getWallUploadServer", 
-                      {"owner_id": "-" + VK_GROUP_ID}, 
-                      token=VK_TOKEN, retries=1)
+        srv = vk_call("photos.getWallUploadServer", {"owner_id": "-" + VK_GROUP_ID}, token=VK_TOKEN, retries=1)
         if srv and "upload_url" in srv:
-            log("🌡 Барометр флуда: ЗЁЛЕНЫЙ — загрузка доступна (group_token)")
+            log("🌡 Барометр: ЗЁЛЕНЫЙ (через VK_TOKEN)")
             return True, srv
-    
-    log("🌡 Барометр флуда: КРАСНЫЙ — флуд/кулдаун или нет валидного токена")
+            
+    log("🌡 Барометр: КРАСНЫЙ (флуд или нет прав на загрузку фото)")
     return False, None
 
 def finish_upload(srv, img_bytes):
-    """Загрузка фото по уже полученному upload_url."""
     try:
-        r = requests.post(srv["upload_url"],
-                         files={"photo": ("cover.jpg", img_bytes, "image/jpeg")},
-                         timeout=120).json()
+        r = requests.post(srv["upload_url"], files={"photo": ("cover.jpg", img_bytes, "image/jpeg")}, timeout=120).json()
     except Exception as e:
         log(f"⚠️ ВК upload: ошибка POST: {e}")
         return None
     if not (r.get("photo") and r.get("hash")):
-        log(f"️ ВК upload: пустой ответ: {str(r)[:120]}")
         return None
-    saved = vk_call("photos.saveWallPhoto",
-                    {"owner_id": "-" + VK_GROUP_ID, "photo": r["photo"],
-                     "server": r.get("server", ""), "hash": r.get("hash", "")},
-                    token=VK_USER_TOKEN, retries=2)
+    saved = vk_call("photos.saveWallPhoto", {"owner_id": "-" + VK_GROUP_ID, "photo": r["photo"], "server": r.get("server", ""), "hash": r.get("hash", "")}, token=VK_USER_TOKEN or VK_TOKEN, retries=2)
     if not saved:
         return None
     p = saved[0]
@@ -123,10 +109,9 @@ def vk_post_wall(text, attachment=None):
     if attachment:
         params["attachments"] = attachment
     
-    # Пробуем с групповым токеном
+    # Публикация отлично работает с групповым токеном
     res = vk_call("wall.post", params, token=VK_TOKEN, retries=2)
     if not res and VK_USER_TOKEN:
-        log("⚠️ ВК: групповой токен не смог опубликовать — пробую юзер-токеном")
         res = vk_call("wall.post", params, token=VK_USER_TOKEN, retries=2)
     
     if res:
@@ -135,27 +120,23 @@ def vk_post_wall(text, attachment=None):
     return None
 
 # ============================================================
-# Кэш обложек
+# Кэш и Pending
 # ============================================================
 def load_covers_cache():
     try:
-        if os.path.exists(COVERS_CACHE):
-            return json.load(open(COVERS_CACHE, encoding="utf-8"))
-    except Exception:
-        pass
+        if os.path.exists(COVERS_CACHE): return json.load(open(COVERS_CACHE, encoding="utf-8"))
+    except Exception: pass
     return {}
 
 def save_covers_cache(cache):
     try:
         json.dump(cache, open(COVERS_CACHE, "w", encoding="utf-8"), ensure_ascii=False)
-        log(f"💾 Кэш обложек сохранён: {len(cache)} записей")
-    except Exception as e:
-        log(f"⚠️ Кэш обложек: {e}")
+    except Exception: pass
 
 def get_cover_from_cache(album_title):
     cache = load_covers_cache()
     if album_title in cache:
-        log(f"✅ Обложка «{album_title}» взята из кэша: {cache[album_title]}")
+        log(f"✅ Обложка «{album_title}» взята из кэша")
         return cache[album_title]
     return None
 
@@ -164,29 +145,18 @@ def save_cover_to_cache(album_title, att):
     cache[album_title] = att
     save_covers_cache(cache)
 
-# ============================================================
-# Pending (отложенная публикация)
-# ============================================================
 def save_pending(track_info, att, cover_path=None):
-    """Сохраняем трек в pending для допубликации на тике."""
     try:
-        data = {
-            "track": track_info,
-            "att": att,
-            "cover_path": cover_path,
-            "created": datetime.datetime.now().isoformat()
-        }
+        data = {"track": track_info, "att": att, "cover_path": cover_path, "created": datetime.datetime.now().isoformat()}
         json.dump(data, open(PENDING_MUSIC, "w", encoding="utf-8"), ensure_ascii=False)
-        log(f"💾 pending_music.json создан: трек ждёт публикации")
+        log("💾 pending_music.json создан: трек ждёт публикации")
     except Exception as e:
         log(f"⚠️ pending music: {e}")
 
 def load_pending():
     try:
-        if os.path.exists(PENDING_MUSIC):
-            return json.load(open(PENDING_MUSIC, encoding="utf-8"))
-    except Exception:
-        pass
+        if os.path.exists(PENDING_MUSIC): return json.load(open(PENDING_MUSIC, encoding="utf-8"))
+    except Exception: pass
     return None
 
 def clear_pending():
@@ -194,98 +164,59 @@ def clear_pending():
         if os.path.exists(PENDING_MUSIC):
             os.remove(PENDING_MUSIC)
             log("🧹 pending_music.json удалён")
-    except Exception:
-        pass
+    except Exception: pass
 
 # ============================================================
 # Загрузка музыки
 # ============================================================
 def load_music():
     try:
-        data = json.load(open(MUSIC_FILE, encoding="utf-8"))
-        return data
+        return json.load(open(MUSIC_FILE, encoding="utf-8"))
     except Exception as e:
         log(f"❌ Ошибка загрузки {MUSIC_FILE}: {e}")
         return None
 
 def get_random_track(music_data):
     tracks = []
-    default_artist = ""
-    if "metadata" in music_data and "artist" in music_data["metadata"]:
-        default_artist = music_data["metadata"]["artist"].strip()
+    default_artist = music_data.get("metadata", {}).get("artist", "").strip()
     
     for album in music_data.get("albums", []):
         for track in album.get("tracks", []):
-            tracks.append({
-                "type": "album",
-                "album_title": album.get("title", ""),
-                "track_title": track.get("title", ""),
-                "artist": default_artist,
-                "audio_id": track.get("audio_id", ""),
-                "genre": album.get("genre", "")
-            })
-    
+            tracks.append({"type": "album", "album_title": album.get("title", ""), "track_title": track.get("title", ""), "artist": default_artist, "audio_id": track.get("audio_id", ""), "genre": album.get("genre", "")})
     for ep in music_data.get("eps", []):
         for track in ep.get("tracks", []):
-            tracks.append({
-                "type": "ep",
-                "album_title": ep.get("title", ""),
-                "track_title": track.get("title", ""),
-                "artist": default_artist,
-                "audio_id": track.get("audio_id", ""),
-                "genre": ep.get("genre", "")
-            })
-    
+            tracks.append({"type": "ep", "album_title": ep.get("title", ""), "track_title": track.get("title", ""), "artist": default_artist, "audio_id": track.get("audio_id", ""), "genre": ep.get("genre", "")})
     for single in music_data.get("singles", []):
         for track in single.get("tracks", []):
-            tracks.append({
-                "type": "single",
-                "album_title": single.get("title", ""),
-                "track_title": track.get("title", ""),
-                "artist": default_artist,
-                "audio_id": track.get("audio_id", ""),
-                "genre": single.get("genre", "")
-            })
+            tracks.append({"type": "single", "album_title": single.get("title", ""), "track_title": track.get("title", ""), "artist": default_artist, "audio_id": track.get("audio_id", ""), "genre": single.get("genre", "")})
     
-    if not tracks:
-        return None
-    return random.choice(tracks)
+    return random.choice(tracks) if tracks else None
 
 def prepare_cover(track_info):
-    """v3.21: Авто-поиск обложки по названию альбома (рус→латиница)."""
     album_title = track_info.get("album_title", "Unknown")
-    
-    # 1. Сначала проверяем кэш
     cached_att = get_cover_from_cache(album_title)
     if cached_att:
         return cached_att, None
     
-    # 2. Авто-поиск: преобразуем название альбома в имя файла
     album_slug = transliterate_rus_to_lat(album_title)
-    possible_paths = [
-        f"covers/{album_slug}.jpg",
-        f"covers/{album_slug}.png",
-        f"covers/{album_slug}.jpeg",
-    ]
-    
-    for cover_path in possible_paths:
+    for ext in [".jpg", ".png", ".jpeg"]:
+        cover_path = f"covers/{album_slug}{ext}"
         if os.path.exists(cover_path):
             log(f"✅ Обложка найдена авто-поиском: {cover_path}")
             with open(cover_path, "rb") as f:
-                img_bytes = f.read()
-            return None, img_bytes
+                return None, f.read()
     
-    log(f"❌ Обложка не найдена для альбома «{album_title}» (ожидался: covers/{album_slug}.jpg)")
+    log(f"❌ Обложка не найдена для «{album_title}» (ожидался: covers/{album_slug}.jpg)")
     return None, None
 
 # ============================================================
-# Режим тика (допубликация pending)
+# Режимы работы
 # ============================================================
 def run_tick():
-    log("🕐 Режим: ТИК (допубликация отложенного музыкального поста)")
+    log("🕐 Режим: ТИК (допубликация)")
     pend = load_pending()
     if not pend:
-        log("ℹ️ pending_music.json нет — отложенных постов нет")
+        log("ℹ️ pending_music.json нет")
         return True
     
     track_info = pend.get("track", {})
@@ -297,58 +228,37 @@ def run_tick():
         log("⏳ Флуд красный — pending music ждёт следующего тика")
         return True
     
-    # Если обложка ещё не загружена — загружаем
-    if not att:
-        if cover_path and os.path.exists(cover_path):
-            with open(cover_path, "rb") as f:
-                img_bytes = f.read()
-            att = finish_upload(srv, img_bytes)
-            if not att:
-                log("⚠️ Загрузка обложки не удалась — жду следующий тик")
-                return True
-            album_title = track_info.get("album_title", "")
-            if album_title:
-                save_cover_to_cache(album_title, att)
+    if not att and cover_path and os.path.exists(cover_path):
+        with open(cover_path, "rb") as f:
+            img_bytes = f.read()
+        att = finish_upload(srv, img_bytes)
+        if att:
+            save_cover_to_cache(track_info.get("album_title", ""), att)
         else:
-            log(f"⚠️ Файл {cover_path} не найден — сбрасываю pending")
-            clear_pending()
             return True
-    
-    # Публикуем пост
+            
     artist = track_info.get("artist", "")
     track_title = track_info.get("track_title", "")
     album_title = track_info.get("album_title", "")
     audio_id = track_info.get("audio_id", "")
     genre = track_info.get("genre", "")
     
-    caption_parts = [f"🎵 {artist} — {track_title}"]
-    if album_title:
-        caption_parts.append(f"💿 Альбом: «{album_title}»")
-    if genre:
-        caption_parts.append(f"🎼 Жанр: {genre}")
+    caption = f"🎵 {artist} — {track_title}"
+    if album_title: caption += f"\n💿 Альбом: «{album_title}»"
+    if genre: caption += f"\n🎼 Жанр: {genre}"
     
-    caption = "\n".join(caption_parts)
     attachments = f"{att},{audio_id}" if att and audio_id else audio_id
-    
     res = vk_post_wall(caption, attachments if attachments else None)
+    
     if res:
-        log(f"✅ ВК: pending music опубликован")
+        log("✅ ВК: pending music опубликован")
         clear_pending()
-        return True
-    else:
-        log("⚠️ Публикация pending music не удалась — флуд держится")
-        return False
+    return bool(res)
 
-# ============================================================
-# Режим публикации
-# ============================================================
 def run_publish():
     log("📢 Режим: ПУБЛИКАЦИЯ (музыка)")
-    
     music_data = load_music()
-    if not music_data:
-        log("❌ Нет данных о музыке")
-        return False
+    if not music_data: return False
     
     track_info = get_random_track(music_data)
     if not track_info:
@@ -361,65 +271,52 @@ def run_publish():
     audio_id = track_info.get("audio_id", "")
     genre = track_info.get("genre", "")
     
-    log(f"🎵 Выбран трек: {artist} — {track_title} (альбом: {album_title}, жанр: {genre})")
+    log(f"🎵 Выбран трек: {artist} — {track_title} (альбом: {album_title})")
     log(f"🎵 audio_id: {audio_id}")
     
-    # Подготавливаем обложку (с авто-поиском по транслитерации)
     att, img_bytes = prepare_cover(track_info)
     
     if att:
         log("✅ Используем обложку из кэша")
     elif img_bytes:
-        # Обложка есть, но нужно загрузить — проверяем флуд
+        # ПРОВЕРЯЕМ ФЛУД ТОЛЬКО ЗДЕСЬ (перед реальной загрузкой)
         green, srv = flood_probe()
         if not green:
-            log("⏳ Флуд красный — сохраняю трек в pending для следующей попытки")
-            # v3.21: используем транслитерированное название для пути файла
+            log("⏳ Флуд красный — сохраняю трек в pending")
             album_slug = transliterate_rus_to_lat(album_title)
             cover_path = f"covers/pending_{album_slug}.jpg"
             os.makedirs("covers", exist_ok=True)
             with open(cover_path, "wb") as f:
                 f.write(img_bytes)
-            log(f"💾 Обложка сохранена: {cover_path}")
             save_pending(track_info, "", cover_path)
             return True
         
-        # Флуд зелёный — загружаем
         att = finish_upload(srv, img_bytes)
         if att:
             save_cover_to_cache(album_title, att)
         else:
-            log("⚠️ Загрузка обложки не удалась, пробую опубликовать без фото")
+            log("⚠️ Загрузка обложки не удалась, публикую без фото")
     else:
         log("⚠️ Публикую пост БЕЗ обложки")
     
-    # Формируем caption
+    # Формируем текст и вложения
     caption_parts = [f"🎵 {artist} — {track_title}"]
-    if album_title:
-        caption_parts.append(f"💿 Альбом: «{album_title}»")
-    if genre:
-        caption_parts.append(f"🎼 Жанр: {genre}")
-    
+    if album_title: caption_parts.append(f"💿 Альбом: «{album_title}»")
+    if genre: caption_parts.append(f"🎼 Жанр: {genre}")
     caption = "\n".join(caption_parts)
     
-    # Формируем attachments
     attachments = f"{att},{audio_id}" if att and audio_id else audio_id
     
-    # ПУБЛИКУЕМ (без повторной проверки барометра)
+    # ПУБЛИКУЕМ СРАЗУ (без лишних проверок барометра, wall.post работает с VK_TOKEN)
     res = vk_post_wall(caption, attachments if attachments else None)
     
     if res:
         log(f"✅ Готово: {album_title} (опубликовано{' с обложкой' if att else ' без обложки'})")
         return True
     else:
-        log("❌ Публикация не удалась — сохраняю в pending")
-        album_slug = transliterate_rus_to_lat(album_title)
-        save_pending(track_info, att if att else "", f"covers/pending_{album_slug}.jpg")
+        log("❌ Публикация не удалась")
         return False
 
-# ============================================================
-# Точка входа
-# ============================================================
 def main():
     if not VK_TOKEN or not VK_GROUP_ID:
         log("⚠️ Нет VK_TOKEN/VK_GROUP_ID")
