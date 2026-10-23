@@ -39,7 +39,7 @@ RU = "\n\nВАЖНО: Пиши ТОЛЬКО на русском языке."
 
 GROQ_MODELS = ["meta-llama/llama-4-scout-17b-16e-instruct", "meta-llama/llama-4-maverick-17b-128e-instruct", "openai/gpt-oss-120b", "llama-3.1-8b-instant"]
 
-# v23.2: ЖЁСТКИЙ запрет на клише и шаблонные фразы
+# ЖЁСТКИЙ запрет на клише и шаблонные фразы
 META_BAN = (
     " СТРОГИЙ ЗАПРЕТ: НЕ включай в финальный текст служебные слова и метки: "
     "«Эмоциональный крючок», «Крючок поста», «Длина поста», «Пост с отсылкой», "
@@ -49,7 +49,7 @@ META_BAN = (
     "«Новая книга», «Новая глава», «Этот захватывающий», «Этот увлекательный». "
     "НЕ начинай с названия книги или серии. "
     "НЕ используй восклицательные знаки в первой строке. "
-    "НЕ делай коротких строк-подзаголовков без продолжения (вроде «Катакомбы Хургады» на отдельной строке). "
+    "НЕ делай коротких строк-подзаголовков без продолжения. "
     "Пиши сплошным связным текстом с абзацами. "
     "Первая строка должна быть КОНКРЕТНОЙ СЦЕНОЙ или ДЕЙСТВИЕМ героя. "
     "ПРИМЕР ХОРОШЕГО НАЧАЛА: «Владимир Тихонин расследует покушение...» "
@@ -128,7 +128,6 @@ def ai_text(prompt, minlen=300, rescue_min=200):
     return None
 
 def _strip_meta(text):
-    """v23.2: удаляет служебные метки из ответа ИИ."""
     bad_prefixes = [
         "Эмоциональный крючок", "Крючок поста", "Длина поста", "Пост с отсылкой",
         "Пост:", "Текст:", "Ответ:", "Вот пост", "Вот текст",
@@ -148,14 +147,12 @@ def _strip_meta(text):
     return "\n".join(cleaned).strip()
 
 def _strip_subheadings(text):
-    """v23.2: убирает короткие строки-подзаголовки без продолжения."""
     lines = text.split("\n")
     cleaned = []
     i = 0
     while i < len(lines):
         line = lines[i]
         stripped = line.strip()
-        # Если строка короткая (до 40 симв), без знаков препинания в конце, и следующая строка — продолжение
         if (len(stripped) < 40 and stripped and 
             not stripped[-1] in ".!?:…" and 
             i + 1 < len(lines) and lines[i+1].strip()):
@@ -167,7 +164,6 @@ def _strip_subheadings(text):
     return "\n".join(cleaned).strip()
 
 def _fix_bad_opening(text):
-    """v23.2: вырезает первые строки с клише."""
     bad_openings = [
         "погрузитесь", "откройте", "узнайте", "представляем",
         "встречайте", "добро пожаловать", "читайте", "новый роман",
@@ -178,7 +174,7 @@ def _fix_bad_opening(text):
     while lines:
         first = lines[0].strip().lower()
         if any(bad in first for bad in bad_openings):
-            log(f"🩹 Вырезана плохая первая строка: {lines[0][:80]}")
+            log(f" Вырезана плохая первая строка: {lines[0][:80]}")
             lines.pop(0)
         else:
             break
@@ -192,7 +188,6 @@ def clean_txt(t):
     return t
 
 def safe_trim(text, limit):
-    """v23: Гарантирует, что текст не будет обрезан на полуслове."""
     if len(text) <= limit:
         return text
     cut_pos = max(text.rfind("."), text.rfind("!"), text.rfind("?"), text.rfind("\n"))
@@ -230,7 +225,7 @@ def build_mystery_post(mystery, day):
     return clean_txt(txt) if txt else f"Загадка: {topic}\n\n{mystery['facts'][0]}"
 
 # ============================================================
-# КАРТИНКИ (v23.2: размер 800×800 вместо 1024×1024)
+# КАРТИНКИ
 # ============================================================
 def image_stats(img_bytes):
     try:
@@ -264,10 +259,9 @@ def download_image(scene_text, seed):
     return None
 
 def convert_to_jpeg(img_bytes):
-    """v23.2: сжатие до 800×800 (было 1024×1024)."""
     try:
         im = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-        im.thumbnail((800, 800))  # было (1024, 1024)
+        im.thumbnail((800, 800))
         buf = io.BytesIO()
         im.save(buf, "JPEG", quality=85, optimize=True)
         data = buf.getvalue()
@@ -350,7 +344,7 @@ def tg_post(img_bytes, caption):
     return False
 
 # ============================================================
-# MAX v23.2: полная диагностика + перебор баз API
+# MAX
 # ============================================================
 def max_post(img_bytes, text):
     if not MAX_TOKEN:
@@ -361,7 +355,7 @@ def max_post(img_bytes, text):
         return False
 
     chat_val = int(MAX_CHAT) if MAX_CHAT.lstrip("-").isdigit() else MAX_CHAT
-    log(f"ℹ️ MAX: chat_id = {chat_val} (тип: {type(chat_val).__name__})")
+    log(f"️ MAX: chat_id = {chat_val} (тип: {type(chat_val).__name__})")
 
     bases = ["https://platform-api.max.ru", "https://platform-api2.max.ru", "https://botapi.max.ru"]
     headers_list = [{"Authorization": f"Bearer {MAX_TOKEN}"}, {"Authorization": MAX_TOKEN}]
@@ -369,7 +363,6 @@ def max_post(img_bytes, text):
     for base in bases:
         for hdr in headers_list:
             log(f"🔄 MAX: пробую {base} ...")
-
             try:
                 up = requests.post(f"{base}/uploads", headers=hdr,
                                    params={"type": "image", "chat_id": chat_val},
@@ -404,7 +397,7 @@ def max_post(img_bytes, text):
                 tok = tok or ru.get("token") or ru.get("file")
 
             if not tok:
-                log(f"   ⚠️ MAX: токен вложения не найден — пробую следующую базу")
+                log(f"   ️ MAX: токен вложения не найден — пробую следующую базу")
                 continue
 
             log(f"   ✅ MAX: токен вложения получен: {str(tok)[:30]}...")
@@ -426,7 +419,7 @@ def max_post(img_bytes, text):
                 log(f"✅ MAX: пост отправлен (chat_id={chat_val}, id={m.get('id')})")
                 return True
             else:
-                log(f"   ⚠️ MAX: ответ не успех — {str(r)[:150]}")
+                log(f"   ️ MAX: ответ не успех — {str(r)[:150]}")
 
     log("❌ MAX: все базы API и заголовки исчерпаны — пост не отправлен")
     return False
@@ -479,13 +472,22 @@ def run_tick(day):
 # ============================================================
 def main():
     day = datetime.date.today().toordinal()
-    mode = "publish" if (not SCHEDULE or SCHEDULE == PUBLISH_CRON) else "tick"
+    
+    # При ручном запуске (SCHEDULE пустой) — всегда публикация
+    if not SCHEDULE:
+        mode = "publish"
+    elif SCHEDULE == PUBLISH_CRON:
+        mode = "publish"
+    else:
+        mode = "tick"
+    
+    log(f"🗓 Расписание: «{SCHEDULE or 'ручной'}» → режим: {mode}")
     
     if mode == "tick":
         run_tick(day)
         return
 
-    log("📢 Режим: ПУБЛИКАЦИЯ")
+    log(" Режим: ПУБЛИКАЦИЯ")
     
     # 1. Выбираем тип контента: 70% шанс на тайну, 30% на книгу
     is_mystery = random.random() < 0.7
@@ -516,7 +518,7 @@ def main():
     else:
         post = build_book_post(book_data, day)
         link = book_data.get("url", "")
-        link_part = f"\n\n📖 Читайте на ЛитРес: {link}" if (link and LINK_IN_TG) else ""
+        link_part = f"\n\n Читайте на ЛитРес: {link}" if (link and LINK_IN_TG) else ""
         tags = BOOK_TAGS
         img_prompt = post[:150]
 
