@@ -58,7 +58,7 @@ META_BAN = (
 def log(msg):
     print(msg, flush=True)
 
-log("Версия ℹ️ gnesyuk-vk-agent v23.6 (OpenAI без response_format + 10 попыток генерации + длина 600)")
+log("Версия ℹ️ gnesyuk-vk-agent v24.0 (SDK OpenAI + Pollinations fallback + длина 600)")
 
 # ============================================================
 # ИИ-ТЕКСТ
@@ -195,7 +195,7 @@ def safe_trim(text, limit):
     return text[:limit].rsplit(' ', 1)[0] + "..."
 
 # ============================================================
-# ГЕНЕРАЦИЯ ПОСТОВ (v23.6: длина 550-650 символов)
+# ГЕНЕРАЦИЯ ПОСТОВ (длина 550-650)
 # ============================================================
 def build_book_post(book, day):
     t, a, s = book["title"], book["about"], book["series"]
@@ -224,104 +224,86 @@ def build_mystery_post(mystery, day):
     return clean_txt(txt) if txt else f"Загадка: {topic}\n\n{mystery['facts'][0]}"
 
 # ============================================================
-# КАРТИНКИ v23.6: OpenAI без response_format + 10 попыток
+# КАРТИНКИ v24.0: SDK OpenAI + Pollinations fallback
 # ============================================================
-def image_stats(img_bytes):
-    try:
-        im = Image.open(io.BytesIO(img_bytes)).convert("L")
-        im.thumbnail((64, 64))
-        px = list(im.tobytes())
-        return True, sum(px) / len(px), sum(1 for p in px if p > 160) / len(px)
-    except Exception:
-        return False, 0.0, 0.0
-
 def download_image(scene_text, seed):
-    """v23.6: OpenAI без response_format + множественные fallback Pollinations."""
+    """v24.0: Официальный OpenAI SDK → fallback на Pollinations."""
     clean_img = "".join(c for c in scene_text if c.isalnum() or c.isspace() or c in ".,-")[:220].strip()
-    base = f"Cinematic, mysterious, highly detailed, 8k, dramatic lighting. Scene: {clean_img}."
-    p_openai = base + " People and faces allowed, anatomically perfect. No text, no watermark."
-    p_poll = base + " People ONLY as distant silhouettes from behind. No text, no watermark."
+    base_prompt = f"Cinematic, mysterious, highly detailed, 8k, dramatic lighting. Scene: {clean_img}."
     
-    # Попытка 1-3: OpenAI DALL-E 3 (без response_format!)
+    # --- ПОПЫТКА 1: Официальный OpenAI SDK ---
     if OPENAI_KEY:
-        for attempt in range(3):
-            log(f"🎨 Пробую OpenAI dall-e-3 (попытка {attempt+1}/3)...")
-            try:
-                r = requests.post("https://api.openai.com/v1/images/generations",
-                    headers={"Authorization": f"Bearer {OPENAI_KEY}", "Content-Type": "application/json"},
-                    json={
-                        "model": "dall-e-3",
-                        "prompt": p_openai,
-                        "n": 1,
-                        "size": "1024x1024",
-                        "quality": "standard"
-                    }, timeout=180).json()
-                log(f"   OpenAI dall-e-3 ответ: {str(r)[:300]}")
-                if "error" not in r and r.get("data"):
-                    img_url = r["data"][0].get("url")
-                    if img_url:
-                        log(f"✅ OpenAI вернул URL, скачиваем...")
-                        img_resp = requests.get(img_url, timeout=60)
-                        if img_resp.status_code == 200:
-                            log("✅ OpenAI dall-e-3 вернул картинку")
-                            return img_resp.content
+        try:
+            from openai import OpenAI
+            log("🎨 Пробую OpenAI через официальный SDK (dall-e-3)...")
+            
+            client = OpenAI(api_key=OPENAI_KEY)
+            
+            response = client.images.generate(
+                model="dall-e-3",
+                prompt=base_prompt + " No text, no watermark.",
+                n=1,
+                size="1024x1024",
+                quality="standard"
+            )
+            
+            img_url = response.data[0].url
+            if img_url:
+                log(f"✅ OpenAI SDK вернул URL: {img_url[:50]}...")
+                r = requests.get(img_url, timeout=60)
+                if r.status_code == 200 and len(r.content) > 10000:
+                    log("✅ OpenAI SDK dall-e-3 успешен!")
+                    return r.content
                 else:
-                    log(f"⚠️ OpenAI dall-e-3 ошибка: {r.get('error', {})}")
-            except Exception as e:
-                log(f"⚠️ OpenAI dall-e-3 исключение: {e}")
-            time.sleep(2)
-        
-        # Попытка 4-6: OpenAI DALL-E 2
-        for attempt in range(3):
-            log(f"🎨 Пробую OpenAI dall-e-2 (попытка {attempt+1}/3)...")
-            try:
-                r = requests.post("https://api.openai.com/v1/images/generations",
-                    headers={"Authorization": f"Bearer {OPENAI_KEY}", "Content-Type": "application/json"},
-                    json={
-                        "model": "dall-e-2",
-                        "prompt": p_openai,
-                        "n": 1,
-                        "size": "1024x1024"
-                    }, timeout=180).json()
-                log(f"   OpenAI dall-e-2 ответ: {str(r)[:300]}")
-                if "error" not in r and r.get("data"):
-                    img_url = r["data"][0].get("url")
+                    log(f"⚠️ Не удалось скачать картинку по URL: статус={r.status_code}")
+                    
+        except ImportError:
+            log("⚠️ Библиотека 'openai' не установлена. Проверяйте requirements/yaml.")
+        except Exception as e:
+            error_str = str(e)
+            log(f"⚠️ Ошибка OpenAI SDK dall-e-3: {error_str[:200]}")
+            # Если ошибка связана с моделью, пробуем dall-e-2
+            if "model" in error_str.lower() or "invalid_value" in error_str or "не существует" in error_str:
+                try:
+                    log("🔄 Пробую OpenAI SDK с моделью dall-e-2...")
+                    response = client.images.generate(
+                        model="dall-e-2",
+                        prompt=base_prompt + " No text, no watermark.",
+                        n=1,
+                        size="1024x1024"
+                    )
+                    img_url = response.data[0].url
                     if img_url:
-                        log(f"✅ OpenAI dall-e-2 вернул URL, скачиваем...")
-                        img_resp = requests.get(img_url, timeout=60)
-                        if img_resp.status_code == 200:
-                            log("✅ OpenAI dall-e-2 вернул картинку")
-                            return img_resp.content
-                else:
-                    log(f"⚠️ OpenAI dall-e-2 ошибка: {r.get('error', {})}")
-            except Exception as e:
-                log(f"⚠️ OpenAI dall-e-2 исключение: {e}")
-            time.sleep(2)
+                        r = requests.get(img_url, timeout=60)
+                        if r.status_code == 200 and len(r.content) > 10000:
+                            log("✅ OpenAI SDK dall-e-2 вернул картинку")
+                            return r.content
+                except Exception as e2:
+                    log(f"⚠️ Вторая попытка OpenAI SDK тоже упала: {str(e2)[:100]}")
+
+    # --- ПОПЫТКА 2: Pollinations (бесплатный фолбэк) ---
+    log("🎨 Пробую Pollinations (fallback)...")
+    p_poll = base_prompt + " People ONLY as distant silhouettes from behind. No text, no watermark."
     
-    # Попытка 7-10: Pollinations с разными моделями и параметрами
-    pollinations_attempts = [
-        {"model": "", "prompt": p_poll, "seed": seed},
-        {"model": "flux", "prompt": p_poll, "seed": seed + 1},
-        {"model": "", "prompt": f"Mysterious cinematic scene, {clean_img[:100]}, 8k", "seed": seed + 2},
-        {"model": "turbo", "prompt": p_poll, "seed": seed + 3},
+    attempts = [
+        {"model": "", "seed": seed},           # Дефолтная
+        {"model": "flux", "seed": seed + 1},   # Flux
+        {"model": "turbo", "seed": seed + 2},  # Turbo
     ]
     
-    for i, attempt in enumerate(pollinations_attempts, 1):
-        log(f"🎨 Пробую Pollinations (попытка {i}/4)...")
+    for att in attempts:
         try:
-            model_param = f"&model={attempt['model']}" if attempt['model'] else ""
-            url = f"{POLLINATIONS_API}{requests.utils.quote(attempt['prompt'])}?nologo=true&seed={attempt['seed']}{model_param}&width=800&height=450"
+            model_param = f"&model={att['model']}" if att['model'] else ""
+            url = f"{POLLINATIONS_API}{requests.utils.quote(p_poll)}?nologo=true&seed={att['seed']}{model_param}&width=800&height=450"
             log(f"   URL: {url[:120]}...")
             r = requests.get(url, timeout=300)
             log(f"   Статус: {r.status_code}, размер: {len(r.content)} байт")
             if r.status_code == 200 and len(r.content) > 10000:
-                log(f"✅ Pollinations (попытка {i}) вернул картинку")
+                log(f"✅ Pollinations ({att['model'] or 'default'}) вернул картинку")
                 return r.content
-            else:
-                log(f"⚠️ Pollinations попытка {i} не удалась: статус={r.status_code}")
         except Exception as e:
-            log(f"⚠️ Pollinations попытка {i} исключение: {e}")
-    
+            log(f"⚠️ Pollinations исключение: {e}")
+            
     log("❌ Все попытки генерации картинки провалились")
     return None
 
@@ -395,7 +377,7 @@ def vk_post_wall(text, attachment=None):
     return res
 
 # ============================================================
-# TELEGRAM
+# TELEGRAM (fallback без фото)
 # ============================================================
 def tg_post(img_bytes, caption):
     if not TG_BOT or not TG_CHAT: return False
@@ -426,7 +408,7 @@ def tg_post(img_bytes, caption):
     return False
 
 # ============================================================
-# MAX
+# MAX (multipart/form-data + fallback без фото)
 # ============================================================
 def max_post(img_bytes, text):
     if not MAX_TOKEN:
@@ -555,7 +537,7 @@ def run_tick(day):
         log("⚠️ Загрузка на зелёном барометре не удалась — жду следующий тик")
 
 # ============================================================
-# ГЛАВНАЯ ЛОГИКА v23.6
+# ГЛАВНАЯ ЛОГИКА v24.0
 # ============================================================
 def main():
     day = datetime.date.today().toordinal()
@@ -606,7 +588,7 @@ def main():
         tags = BOOK_TAGS
         img_prompt = post[:150]
 
-    # v23.6: длина 600 символов
+    # Длина поста 600 символов
     max_post_len = 600
     post = safe_trim(post, max_post_len)
     caption = post + link_part + "\n\n" + tags
