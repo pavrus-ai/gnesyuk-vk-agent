@@ -58,7 +58,7 @@ META_BAN = (
 def log(msg):
     print(msg, flush=True)
 
-log("Версия ℹ️ gnesyuk-vk-agent v23.3 (диагностика картинок + fallback без фото + фикс длины + MAX multipart)")
+log("Версия ℹ️ gnesyuk-vk-agent v23.3 (диагностика картинок + резервный вариант без фото + исправление длины + MAX multipart)")
 
 # ============================================================
 # ИИ-ТЕКСТ
@@ -224,7 +224,7 @@ def build_mystery_post(mystery, day):
     return clean_txt(txt) if txt else f"Загадка: {topic}\n\n{mystery['facts'][0]}"
 
 # ============================================================
-# КАРТИНКИ с полной диагностикой
+# КАРТИНКИ v23.3: полная диагностика + фикс моделей
 # ============================================================
 def image_stats(img_bytes):
     try:
@@ -236,50 +236,61 @@ def image_stats(img_bytes):
         return False, 0.0, 0.0
 
 def download_image(scene_text, seed):
-    """v23.3: с полной диагностикой и fallback на альтернативный промпт."""
+    """v23.3: фикс моделей OpenAI (dall-e-3) + бесплатная модель Pollinations (turbo)."""
     clean_img = "".join(c for c in scene_text if c.isalnum() or c.isspace() or c in ".,-")[:220].strip()
     base = f"Cinematic, mysterious, highly detailed, 8k, dramatic lighting. Scene: {clean_img}."
     p_openai = base + " People and faces allowed, anatomically perfect. No text, no watermark."
     p_poll = base + " People ONLY as distant silhouettes from behind. No text, no watermark."
     
-    # Попытка 1: OpenAI
+    # Попытка 1: OpenAI DALL-E 3 (рабочая модель!)
     if OPENAI_KEY:
-        log("🎨 Пробую OpenAI gpt-image-1...")
+        log("🎨 Пробую OpenAI dall-e-3...")
         try:
             r = requests.post("https://api.openai.com/v1/images/generations",
                 headers={"Authorization": f"Bearer {OPENAI_KEY}", "Content-Type": "application/json"},
-                json={"model": "gpt-image-1", "prompt": p_openai, "n": 1, "size": "1024x1024", "quality": "low"}, timeout=180).json()
+                json={"model": "dall-e-3", "prompt": p_openai, "n": 1, "size": "1024x1024", "quality": "standard"}, timeout=180).json()
             if "error" not in r and r.get("data"):
-                log("✅ OpenAI вернул картинку")
+                log("✅ OpenAI dall-e-3 вернул картинку")
                 return base64.b64decode(r["data"][0].get("b64_json", ""))
             else:
                 log(f"⚠️ OpenAI ошибка: {str(r)[:150]}")
         except Exception as e:
             log(f"⚠️ OpenAI исключение: {e}")
     
-    # Попытка 2: Pollinations (основной)
-    log("🎨 Пробую Pollinations (flux)...")
+    # Попытка 2: Pollinations с бесплатной моделью turbo
+    log("🎨 Пробую Pollinations (turbo)...")
     try:
-        url = f"{POLLINATIONS_API}{requests.utils.quote(p_poll)}?nologo=true&seed={seed}&model=flux&width=800&height=450"
+        url = f"{POLLINATIONS_API}{requests.utils.quote(p_poll)}?nologo=true&seed={seed}&model=turbo&width=800&height=450"
         log(f"   URL: {url[:120]}...")
         r = requests.get(url, timeout=300)
-        log(f"   Pollinations статус: {r.status_code}, размер: {len(r.content)} байт")
+        log(f"   Pollinations turbo статус: {r.status_code}, размер: {len(r.content)} байт")
         if r.status_code == 200 and len(r.content) > 10000:
-            log("✅ Pollinations вернул картинку")
+            log("✅ Pollinations turbo вернул картинку")
             return r.content
         else:
-            log(f"⚠️ Pollinations не удался: статус={r.status_code}, размер={len(r.content)}")
+            log(f"⚠️ Pollinations turbo не удался: статус={r.status_code}, размер={len(r.content)}")
     except Exception as e:
-        log(f"⚠️ Pollinations исключение: {e}")
+        log(f"⚠️ Pollinations turbo исключение: {e}")
     
-    # Попытка 3: Pollinations с упрощённым промптом
+    # Попытка 3: Pollinations с моделью flux-realism (бесплатная альтернатива)
+    log("🎨 Пробую Pollinations (flux-realism)...")
+    try:
+        url = f"{POLLINATIONS_API}{requests.utils.quote(p_poll)}?nologo=true&seed={seed+1}&model=flux-realism&width=800&height=450"
+        r = requests.get(url, timeout=300)
+        if r.status_code == 200 and len(r.content) > 10000:
+            log("✅ Pollinations flux-realism вернул картинку")
+            return r.content
+    except Exception as e:
+        log(f"⚠️ Pollinations flux-realism исключение: {e}")
+    
+    # Попытка 4: Pollinations с упрощённым промптом и моделью turbo
     log("🎨 Пробую Pollinations с упрощённым промптом...")
     try:
         simple_prompt = f"Mysterious cinematic scene, {clean_img[:100]}, 8k, dramatic lighting, no text"
-        url = f"{POLLINATIONS_API}{requests.utils.quote(simple_prompt)}?nologo=true&seed={seed+1}&model=flux&width=800&height=450"
+        url = f"{POLLINATIONS_API}{requests.utils.quote(simple_prompt)}?nologo=true&seed={seed+2}&model=turbo&width=800&height=450"
         r = requests.get(url, timeout=300)
         if r.status_code == 200 and len(r.content) > 10000:
-            log("✅ Pollinations (упрощённый) вернул картинку")
+            log("✅ Pollinations (упрощённый turbo) вернул картинку")
             return r.content
     except Exception as e:
         log(f"⚠️ Pollinations упрощённый исключение: {e}")
@@ -357,7 +368,7 @@ def vk_post_wall(text, attachment=None):
     return res
 
 # ============================================================
-# TELEGRAM (v23.3: fallback без фото)
+# TELEGRAM v23.3: fallback без фото
 # ============================================================
 def tg_post(img_bytes, caption):
     if not TG_BOT or not TG_CHAT: return False
@@ -390,7 +401,7 @@ def tg_post(img_bytes, caption):
     return False
 
 # ============================================================
-# MAX v23.3: multipart/form-data напрямую
+# MAX v23.3: multipart/form-data + fallback без фото
 # ============================================================
 def max_post(img_bytes, text):
     if not MAX_TOKEN:
