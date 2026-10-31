@@ -53,16 +53,30 @@ jobs:
 
       - name: Commit caches
         if: always()
+        continue-on-error: true
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Сбрасываем всё, что могло быть изменено
+          git reset HEAD -- . 2>/dev/null || true
+          
+          # Добавляем файлы, если они существуют
           for f in vk_att.json pending_attach.json; do
             if [ -f "$f" ]; then git add "$f"; fi
           done
-          if [ -d img ]; then git add img/; fi
-          if ! git diff --quiet || ! git diff --staged --quiet; then
-            git commit -m "chore: book caches [skip ci]"
-            git push
-          else
-            echo "Коммитить нечего"
+          
+          # Добавляем папку img, если существует
+          if [ -d img ]; then
+            git add img/
           fi
+          
+          # Проверяем, есть ли изменения для коммита
+          if git diff --cached --quiet && git diff --quiet; then
+            echo "✅ Коммитить нечего — все файлы актуальны"
+            exit 0
+          fi
+          
+          git commit -m "chore: book caches [skip ci]"
+          git push
+          echo "✅ Кэши закоммичены"
