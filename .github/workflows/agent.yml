@@ -25,7 +25,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install requests Pillow
+        run: pip install requests Pillow openai
 
       - name: Run book agent
         env:
@@ -57,9 +57,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # Сбрасываем всё, что могло быть изменено
-          git reset HEAD -- . 2>/dev/null || true
           
           # Добавляем файлы, если они существуют
           for f in vk_att.json pending_attach.json; do
