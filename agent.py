@@ -39,7 +39,6 @@ RU = "\n\nВАЖНО: Пиши ТОЛЬКО на русском языке."
 
 GROQ_MODELS = ["meta-llama/llama-4-scout-17b-16e-instruct", "meta-llama/llama-4-maverick-17b-128e-instruct", "openai/gpt-oss-120b", "llama-3.1-8b-instant"]
 
-# ЖЁСТКИЙ запрет на клише и шаблонные фразы
 META_BAN = (
     " СТРОГИЙ ЗАПРЕТ: НЕ включай в финальный текст служебные слова и метки: "
     "«Эмоциональный крючок», «Крючок поста», «Длина поста», «Пост с отсылкой», "
@@ -59,7 +58,7 @@ META_BAN = (
 def log(msg):
     print(msg, flush=True)
 
-log("Версия ℹ️ gnesyuk-vk-agent v23.2 (70% тайн / 30% книг; защита от мета-артефактов и клише; MAX с полной диагностикой; картинки 800×800)")
+log("Версия ℹ️ gnesyuk-vk-agent v23.3 (диагностика картинок + fallback без фото + фикс длины + MAX multipart)")
 
 # ============================================================
 # ИИ-ТЕКСТ
@@ -174,7 +173,7 @@ def _fix_bad_opening(text):
     while lines:
         first = lines[0].strip().lower()
         if any(bad in first for bad in bad_openings):
-            log(f" Вырезана плохая первая строка: {lines[0][:80]}")
+            log(f"🩹 Вырезана плохая первая строка: {lines[0][:80]}")
             lines.pop(0)
         else:
             break
@@ -203,11 +202,11 @@ def build_book_post(book, day):
     prompt = (f"Напиши пост-анонс для соцсетей о романе Павла Гнесюка «{t}» (серия «{s}»). "
               f"Сюжет: {a}. Требования: 1. ТОЛЬКО русский язык. "
               f"2. Первая строка — ЭМОЦИОНАЛЬНЫЙ КРЮЧОК (до 90 символов). "
-              f"3. Объем СТРОГО 750-850 символов (это критично!). "
+              f"3. Объем СТРОГО 700-800 символов (это критично!). "
               f"4. Живой стиль, без слов 'инновационный', 'стоит отметить'. "
               f"5. В конце НЕ добавляй ссылки, я добавлю их сам."
               + META_BAN)
-    txt = ai_text(prompt, minlen=700, rescue_min=600)
+    txt = ai_text(prompt, minlen=600, rescue_min=500)
     return clean_txt(txt) if txt else f"РОМАН «{t.upper()}»: {a}"
 
 def build_mystery_post(mystery, day):
@@ -217,15 +216,15 @@ def build_mystery_post(mystery, day):
               f"Используй эти факты: {facts}. "
               f"Требования: 1. ТОЛЬКО русский язык. "
               f"2. Первая строка — ЭМОЦИОНАЛЬНЫЙ КРЮЧОК (до 90 символов). "
-              f"3. Объем СТРОГО 750-850 символов (это критично!). "
+              f"3. Объем СТРОГО 700-800 символов (это критично!). "
               f"4. Живой, интригующий стиль, без нейрослопа. "
               f"5. В конце НЕ добавляй ссылки, я добавлю их сам."
               + META_BAN)
-    txt = ai_text(prompt, minlen=700, rescue_min=600)
+    txt = ai_text(prompt, minlen=600, rescue_min=500)
     return clean_txt(txt) if txt else f"Загадка: {topic}\n\n{mystery['facts'][0]}"
 
 # ============================================================
-# КАРТИНКИ
+# КАРТИНКИ с полной диагностикой
 # ============================================================
 def image_stats(img_bytes):
     try:
@@ -237,25 +236,55 @@ def image_stats(img_bytes):
         return False, 0.0, 0.0
 
 def download_image(scene_text, seed):
+    """v23.3: с полной диагностикой и fallback на альтернативный промпт."""
     clean_img = "".join(c for c in scene_text if c.isalnum() or c.isspace() or c in ".,-")[:220].strip()
     base = f"Cinematic, mysterious, highly detailed, 8k, dramatic lighting. Scene: {clean_img}."
     p_openai = base + " People and faces allowed, anatomically perfect. No text, no watermark."
     p_poll = base + " People ONLY as distant silhouettes from behind. No text, no watermark."
     
+    # Попытка 1: OpenAI
     if OPENAI_KEY:
+        log("🎨 Пробую OpenAI gpt-image-1...")
         try:
             r = requests.post("https://api.openai.com/v1/images/generations",
                 headers={"Authorization": f"Bearer {OPENAI_KEY}", "Content-Type": "application/json"},
                 json={"model": "gpt-image-1", "prompt": p_openai, "n": 1, "size": "1024x1024", "quality": "low"}, timeout=180).json()
             if "error" not in r and r.get("data"):
+                log("✅ OpenAI вернул картинку")
                 return base64.b64decode(r["data"][0].get("b64_json", ""))
-        except Exception: pass
-
+            else:
+                log(f"⚠️ OpenAI ошибка: {str(r)[:150]}")
+        except Exception as e:
+            log(f"⚠️ OpenAI исключение: {e}")
+    
+    # Попытка 2: Pollinations (основной)
+    log("🎨 Пробую Pollinations (flux)...")
     try:
         url = f"{POLLINATIONS_API}{requests.utils.quote(p_poll)}?nologo=true&seed={seed}&model=flux&width=800&height=450"
-        r = requests.get(url, timeout=240)
-        if r.status_code == 200: return r.content
-    except Exception: pass
+        log(f"   URL: {url[:120]}...")
+        r = requests.get(url, timeout=300)
+        log(f"   Pollinations статус: {r.status_code}, размер: {len(r.content)} байт")
+        if r.status_code == 200 and len(r.content) > 10000:
+            log("✅ Pollinations вернул картинку")
+            return r.content
+        else:
+            log(f"⚠️ Pollinations не удался: статус={r.status_code}, размер={len(r.content)}")
+    except Exception as e:
+        log(f"⚠️ Pollinations исключение: {e}")
+    
+    # Попытка 3: Pollinations с упрощённым промптом
+    log("🎨 Пробую Pollinations с упрощённым промптом...")
+    try:
+        simple_prompt = f"Mysterious cinematic scene, {clean_img[:100]}, 8k, dramatic lighting, no text"
+        url = f"{POLLINATIONS_API}{requests.utils.quote(simple_prompt)}?nologo=true&seed={seed+1}&model=flux&width=800&height=450"
+        r = requests.get(url, timeout=300)
+        if r.status_code == 200 and len(r.content) > 10000:
+            log("✅ Pollinations (упрощённый) вернул картинку")
+            return r.content
+    except Exception as e:
+        log(f"⚠️ Pollinations упрощённый исключение: {e}")
+    
+    log("❌ Все попытки генерации картинки провалились")
     return None
 
 def convert_to_jpeg(img_bytes):
@@ -267,7 +296,8 @@ def convert_to_jpeg(img_bytes):
         data = buf.getvalue()
         log(f"🖼 Финал: {im.size[0]}x{im.size[1]}, {len(data)} байт")
         return data
-    except Exception:
+    except Exception as e:
+        log(f"⚠️ convert_to_jpeg ошибка: {e}")
         return img_bytes
 
 def commit_image(img_file):
@@ -327,24 +357,40 @@ def vk_post_wall(text, attachment=None):
     return res
 
 # ============================================================
-# TELEGRAM
+# TELEGRAM (v23.3: fallback без фото)
 # ============================================================
 def tg_post(img_bytes, caption):
     if not TG_BOT or not TG_CHAT: return False
+    
+    # Если есть картинка — отправляем с фото
+    if img_bytes:
+        try:
+            r = requests.post(f"https://api.telegram.org/bot{TG_BOT}/sendPhoto",
+                data={"chat_id": TG_CHAT, "caption": caption},
+                files={"photo": ("cover.jpg", img_bytes, "image/jpeg")}, timeout=120).json()
+            if r.get("ok"):
+                log(f"✅ TG: пост с фото отправлен в {TG_CHAT}")
+                return True
+            log(f"⚠️ TG фото: {str(r)[:200]}")
+        except Exception as e:
+            log(f"⚠️ TG фото ошибка: {e}")
+    
+    # Fallback: отправляем только текст
+    log("⚠️ TG: пробую отправить только текст (без фото)")
     try:
-        r = requests.post(f"https://api.telegram.org/bot{TG_BOT}/sendPhoto",
-            data={"chat_id": TG_CHAT, "caption": caption},
-            files={"photo": ("cover.jpg", img_bytes, "image/jpeg")}, timeout=120).json()
+        r = requests.post(f"https://api.telegram.org/bot{TG_BOT}/sendMessage",
+            data={"chat_id": TG_CHAT, "text": caption, "parse_mode": "HTML"},
+            timeout=60).json()
         if r.get("ok"):
-            log(f"✅ TG: пост отправлен в {TG_CHAT}")
+            log(f"✅ TG: текстовый пост отправлен в {TG_CHAT}")
             return True
-        log(f"⚠️ TG: {str(r)[:200]}")
+        log(f"⚠️ TG текст: {str(r)[:200]}")
     except Exception as e:
-        log(f"⚠️ TG ошибка: {e}")
+        log(f"⚠️ TG текст ошибка: {e}")
     return False
 
 # ============================================================
-# MAX
+# MAX v23.3: multipart/form-data напрямую
 # ============================================================
 def max_post(img_bytes, text):
     if not MAX_TOKEN:
@@ -355,14 +401,16 @@ def max_post(img_bytes, text):
         return False
 
     chat_val = int(MAX_CHAT) if MAX_CHAT.lstrip("-").isdigit() else MAX_CHAT
-    log(f"️ MAX: chat_id = {chat_val} (тип: {type(chat_val).__name__})")
+    log(f"ℹ️ MAX: chat_id = {chat_val} (тип: {type(chat_val).__name__})")
 
-    bases = ["https://platform-api.max.ru", "https://platform-api2.max.ru", "https://botapi.max.ru"]
+    bases = ["https://platform-api2.max.ru", "https://platform-api.max.ru", "https://botapi.max.ru"]
     headers_list = [{"Authorization": f"Bearer {MAX_TOKEN}"}, {"Authorization": MAX_TOKEN}]
 
     for base in bases:
         for hdr in headers_list:
             log(f"🔄 MAX: пробую {base} ...")
+            
+            # Шаг 1: получаем URL для загрузки
             try:
                 up = requests.post(f"{base}/uploads", headers=hdr,
                                    params={"type": "image", "chat_id": chat_val},
@@ -374,18 +422,23 @@ def max_post(img_bytes, text):
 
             up_url = up.get("url") if isinstance(up, dict) else None
             if not up_url:
-                log(f"   ⚠️ MAX: нет upload_url в ответе — пробую следующую базу")
+                log(f"   ⚠️ MAX: нет upload_url — пробую следующую базу")
                 continue
 
+            # Шаг 2: загружаем фото через multipart/form-data
             try:
-                ru = requests.post(up_url,
-                                   files={"data": ("cover.jpg", img_bytes, "image/jpeg")},
-                                   timeout=120, verify=False).json()
+                if img_bytes:
+                    files = {"file": ("cover.jpg", img_bytes, "image/jpeg")}
+                    ru = requests.post(up_url, files=files, timeout=120, verify=False).json()
+                else:
+                    # Если картинки нет — отправляем только текст
+                    ru = {"photos": {"0": {"token": "no_image"}}}
                 log(f"   MAX upload фото ответ: {str(ru)[:200]}")
             except Exception as e:
                 log(f"   ⚠️ MAX upload фото ошибка: {e}")
                 continue
 
+            # Шаг 3: извлекаем токен
             tok = None
             if isinstance(ru, dict):
                 ph = ru.get("photos") or {}
@@ -397,16 +450,20 @@ def max_post(img_bytes, text):
                 tok = tok or ru.get("token") or ru.get("file")
 
             if not tok:
-                log(f"   ️ MAX: токен вложения не найден — пробую следующую базу")
+                log(f"   ⚠️ MAX: токен вложения не найден — пробую следующую базу")
                 continue
 
             log(f"   ✅ MAX: токен вложения получен: {str(tok)[:30]}...")
 
+            # Шаг 4: отправляем сообщение
             try:
+                payload = {"text": text[:4000]}
+                if tok != "no_image":
+                    payload["attachments"] = [{"type": "image", "payload": {"token": tok}}]
+                
                 r = requests.post(f"{base}/messages", headers=hdr,
                                   params={"chat_id": chat_val},
-                                  json={"text": text[:4000],
-                                        "attachments": [{"type": "image", "payload": {"token": tok}}]},
+                                  json=payload,
                                   timeout=60, verify=False).json()
                 log(f"   MAX messages ответ: {str(r)[:200]}")
             except Exception as e:
@@ -419,9 +476,9 @@ def max_post(img_bytes, text):
                 log(f"✅ MAX: пост отправлен (chat_id={chat_val}, id={m.get('id')})")
                 return True
             else:
-                log(f"   ️ MAX: ответ не успех — {str(r)[:150]}")
+                log(f"   ⚠️ MAX: ответ не успех — {str(r)[:150]}")
 
-    log("❌ MAX: все базы API и заголовки исчерпаны — пост не отправлен")
+    log("❌ MAX: все базы API исчерпаны — пост не отправлен")
     return False
 
 # ============================================================
@@ -468,12 +525,11 @@ def run_tick(day):
         log("⚠️ Загрузка на зелёном барометре не удалась — жду следующий тик")
 
 # ============================================================
-# ГЛАВНАЯ ЛОГИКА v23.2
+# ГЛАВНАЯ ЛОГИКА v23.3
 # ============================================================
 def main():
     day = datetime.date.today().toordinal()
     
-    # При ручном запуске (SCHEDULE пустой) — всегда публикация
     if not SCHEDULE:
         mode = "publish"
     elif SCHEDULE == PUBLISH_CRON:
@@ -487,7 +543,7 @@ def main():
         run_tick(day)
         return
 
-    log(" Режим: ПУБЛИКАЦИЯ")
+    log("📢 Режим: ПУБЛИКАЦИЯ")
     
     # 1. Выбираем тип контента: 70% шанс на тайну, 30% на книгу
     is_mystery = random.random() < 0.7
@@ -518,18 +574,19 @@ def main():
     else:
         post = build_book_post(book_data, day)
         link = book_data.get("url", "")
-        link_part = f"\n\n Читайте на ЛитРес: {link}" if (link and LINK_IN_TG) else ""
+        link_part = f"\n\n📖 Читайте на ЛитРес: {link}" if (link and LINK_IN_TG) else ""
         tags = BOOK_TAGS
         img_prompt = post[:150]
 
-    # 3. Жесткая безопасная обрезка
-    max_post_len = 850
+    # 3. Жесткая безопасная обрезка с учётом ссылки и тегов
+    # Оставляем запас ~250 символов на ссылку и теги
+    max_post_len = 750
     post = safe_trim(post, max_post_len)
     caption = post + link_part + "\n\n" + tags
     log(f"📝 Длина поста: {len(caption)} симв. (безопасно для TG)")
     log(f"✂️ Крючок поста: {caption.split(chr(10))[0][:120]}")
 
-    # 4. Генерация и сохранение картинки
+    # 4. Генерация картинки
     img_bytes, img_file = None, ""
     if TEST_IMAGE and os.path.exists(TEST_IMAGE):
         with open(TEST_IMAGE, "rb") as f: img_bytes = f.read()
