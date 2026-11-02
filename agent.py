@@ -56,7 +56,7 @@ META_BAN = (
 def log(msg):
     print(msg, flush=True)
 
-log("Версия ℹ️ gnesyuk-vk-agent v27.3 (Optimized OpenAI Flare + Safe VK Publish)")
+log("Версия ℹ️ gnesyuk-vk-agent v27.6 (Economic OpenAI Low + Auto-Crop Pollinations Logo)")
 
 # ============================================================
 # ИИ-ТЕКСТ
@@ -216,7 +216,7 @@ def build_mystery_post(mystery, day):
     return clean_txt(txt) if txt else f"Загадка: {topic}\n\n{mystery['facts'][0]}"
 
 # ============================================================
-# КАРТИНКИ v27.3: Оптимизированный OpenAI Flare + Fallback
+# КАРТИНКИ v27.6: Economic OpenAI Flare (Low) + Auto-Crop Pollinations
 # ============================================================
 def check_image_quality(img_bytes):
     """Проверяет, не слишком ли темная или серая картинка."""
@@ -234,8 +234,8 @@ def check_image_quality(img_bytes):
 
 def download_image(scene_text, seed):
     """
-    v27.3: Экономичная стратегия OpenAI (Flare first) + Fallback Pollinations.
-    Цель: Максимум качества при минимуме затрат ($10 надолго).
+    v27.6 ECONOMIC: OpenAI Flare (Low Quality) + Auto-Crop Pollinations Logo.
+    Цель: Минимальные затраты при максимальном качестве.
     """
     clean_img = "".join(c for c in scene_text if c.isalnum() or c.isspace() or c in ".,-")[:220].strip()
     
@@ -243,33 +243,31 @@ def download_image(scene_text, seed):
     base_prompt = f"Cinematic photography, highly detailed, 8k resolution, dramatic lighting, photorealistic. Scene: {clean_img}. No text, no watermark."
     
     img_bytes = None
+    source = "unknown" # Откуда пришла картинка
 
-    # --- БЛОК 1: Попытки с моделями OpenAI (Приоритет: ДЕШЕВО -> ДОРОГО) ---
+    # --- БЛОК 1: OpenAI (Экономия денег!) ---
     if OPENAI_KEY:
         try:
             from openai import OpenAI
             client = OpenAI(api_key=OPENAI_KEY)
             
-            # Список моделей: сначала самая выгодная (Flare), потом универсальная, потом топовая
             models_to_try = [
-                "gpt-image-2.5-flare",          # 💰 Самый выгодный вариант (быстро/дешево)
-                "chatgpt-image-latest",         # 🔄 Стандартная latest (если flare недоступен)
-                "gpt-image-2"                   # ⚙️ Старая добрая двойка (запасной)
+                "gpt-image-2.5-flare",          # 💰 Самая выгодная модель
+                "chatgpt-image-latest",         # 🔄 Запасной вариант
+                "gpt-image-2"                   # ⚙️ Старый стандарт
             ]
             
             for model_name in models_to_try:
-                log(f"🎨 [OpenAI] Пробую экономичную модель '{model_name}'...")
+                log(f"🎨 [OpenAI] Пробую экономичную модель '{model_name}' (quality=LOW)...")
                 try:
-                    # Используем quality="medium" для экономии. 
                     response = client.images.generate(
                         model=model_name,
                         prompt=base_prompt,
                         n=1,
                         size="1024x1024",
-                        quality="medium" 
+                        quality="low"  # <-- ЭКОНОМИМ! Low вместо Medium/Standard
                     )
                     
-                    # Проверяем результат (URL или Base64)
                     if hasattr(response.data[0], 'url') and response.data[0].url:
                         img_url = response.data[0].url
                         log(f"✅ OpenAI ({model_name}) вернул URL. Скачиваю...")
@@ -277,43 +275,40 @@ def download_image(scene_text, seed):
                         r = requests.get(img_url, timeout=60)
                         if r.status_code == 200 and len(r.content) > 10000:
                             img_bytes = r.content
+                            source = "openai"
                             log(f"🏆 УСПЕХ: Картинка получена от OpenAI ({model_name})!")
-                            break # Выходим из цикла, успех достигнут
+                            break
                         
                     elif hasattr(response.data[0], 'b64_json') and response.data[0].b64_json:
                         log(f"✅ OpenAI ({model_name}) вернул Base64. Декодирую...")
                         img_bytes = base64.b64decode(response.data[0].b64_json)
+                        source = "openai"
                         log(f"🏆 УСПЕХ: Картинка получена от OpenAI ({model_name}) via Base64!")
                         break
                     
-                    else:
-                        log(f"⚠️ OpenAI ({model_name}): Ответ пустой или неизвестного формата.")
-                        
                 except Exception as e:
                     error_str = str(e).lower()
                     log(f"❌ Ошибка OpenAI ({model_name}): {str(e)[:100]}")
                     
-                    # Если ошибка связана с правами доступа или лимитами — прекращаем попытки
+                    # Если ошибка прав доступа или лимитов — прекращаем попытки с этим ключом
                     if "permission" in error_str or "rate_limit" in error_str or "quota" in error_str:
-                        log("💸 Лимиты OpenAI исчерпаны или нет прав. Прекращаю попытки с этим ключом.")
+                        log("💸 Лимиты OpenAI исчерпаны или нет прав. Прекращаю попытки.")
                         break 
 
         except ImportError:
-            log("⚠️ Библиотека 'openai' не найдена. Проверьте pip install openai в YAML.")
+            log("⚠️ Библиотека 'openai' не найдена.")
         except Exception as e:
             log(f"🔥 Критическая ошибка инициализации OpenAI клиента: {e}")
 
-    # --- БЛОК 2: Fallback на Pollinations (Бесплатно и надежно) ---
+    # --- БЛОК 2: Pollinations (Бесплатный фолбэк) ---
     if not img_bytes:
         log("🔄 Переключаюсь на бесплатный фолбэк: Pollinations (Flux)...")
         
-        # Стратегия силуэтов для избежания кривых лиц
         silhouette_boost = ", silhouette from behind, shadow figure, back view only, mysterious atmosphere, foggy background, depth of field, bokeh, professional color grading, vibrant colors"
         anti_artifacts = "face, eyes, mouth, nose, ears, hair details, cartoon, anime, painting, drawing, sketch, illustration, abstract, surreal, distorted face, extra limbs, blurry, low quality, ugly, deformed"
         
         final_prompt = base_prompt + silhouette_boost
         
-        # Пытаемся 2 раза с разными сидами
         for attempt in range(2):
             current_seed = seed + attempt * 500
             
@@ -326,17 +321,18 @@ def download_image(scene_text, seed):
                 r = requests.get(url, timeout=300)
                 
                 if r.status_code == 200 and len(r.content) > 10000:
-                    # Быстрая проверка яркости (чтобы не было черных квадратов)
+                    # Проверка яркости
                     try:
                         im_check = Image.open(io.BytesIO(r.content)).convert("L")
                         avg_brightness = sum(im_check.getdata()) / (im_check.width * im_check.height)
                         
-                        if avg_brightness < 30: # Слишком темно
+                        if avg_brightness < 30: 
                              log(f"⚠️ Pollinations попытка {attempt+1}: Темная картинка. Пробую другой сид...")
                              continue
-                    except: pass # Если PIL не открыл, просто берем как есть
+                    except: pass 
 
                     img_bytes = r.content
+                    source = "pollinations"
                     log(f"✅ Pollinations успешен! (Попытка {attempt+1})")
                     break
                 else:
@@ -350,7 +346,25 @@ def download_image(scene_text, seed):
     if not img_bytes:
         log("❌ ВСЕ ПОПЫТКИ ГЕНЕРАЦИИ ПРОВАЛИЛИСЬ")
         return None
-        
+    
+    # --- ФИНАЛЬНАЯ ОБРАБОТКА: Удаляем лого Pollinations если источник pollinations ---
+    if source == "pollinations":
+        log("✂️ Обрезаю нижнюю часть картинки (удаляю логотип pollinations.ai)...")
+        try:
+            im_full = Image.open(io.BytesIO(img_bytes))
+            w, h = im_full.size
+            # Режем 4% снизу (примерно 30 пикселей для высоты 768px)
+            crop_box = (0, 0, w, int(h * 0.96)) 
+            im_cropped = im_full.crop(crop_box)
+            
+            # Сохраняем обратно в байты
+            buf = io.BytesIO()
+            im_cropped.save(buf, format="JPEG", quality=90)
+            img_bytes = buf.getvalue()
+            log("✅ Логотип успешно удален.")
+        except Exception as e:
+            log(f"⚠️ Не удалось обрезать картинку: {e}")
+
     return img_bytes
 
 def convert_to_jpeg(img_bytes):
