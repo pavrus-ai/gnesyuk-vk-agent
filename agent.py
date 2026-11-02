@@ -3,8 +3,22 @@ import os, json, datetime, requests, time, io, glob, base64, uuid, urllib3, re, 
 from PIL import Image, ImageEnhance, ImageStat
 urllib3.disable_warnings()
 
+# ============================================================
+# ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ (ИСПРАВЛЕНО!)
+# ============================================================
+# Теперь мы явно читаем ключи GigaChat из переменных окружения GitHub Secrets
 GROQ_KEY = os.environ.get("GROQ_KEY", "").strip()
+GROQ_KEY2 = os.environ.get("GROQ_KEY2", "").strip()
+OR_KEY = os.environ.get("OPENROUTER_KEY", "").strip()
+OR_KEY2 = os.environ.get("OPENROUTER_KEY2", "").strip()
+CEREBRAS_KEY = os.environ.get("CEREBRAS_KEY", "").strip()
+MISTRAL_KEY = os.environ.get("MISTRAL_KEY", "").strip()
 OPENAI_KEY = os.environ.get("OPENAI_KEY", "").strip()
+
+# ИСПРАВЛЕНИЕ ОШИБКИ NameError: добавлены эти две строки
+GIGACHAT_CLIENT_ID = os.environ.get("GIGACHAT_CLIENT_ID1", "").strip()
+GIGACHAT_CLIENT_SECRET = os.environ.get("GIGACHAT_CLIENT_SECRET1", "").strip()
+
 VK_TOKEN = os.environ.get("VK_TOKEN", "").strip()
 VK_USER_TOKEN = os.environ.get("VK_USER_TOKEN", "").strip()
 VK_GROUP_ID = os.environ.get("VK_GROUP_ID", "").strip().lstrip("-")
@@ -16,15 +30,21 @@ LINK_IN_TG = os.environ.get("LINK_IN_TG", "1").strip() != "0"
 
 SCHEDULE = os.environ.get("SCHEDULE", "").strip()
 TEST_IMAGE = os.environ.get("TEST_IMAGE", "").strip()
-PUBLISH_CRON = "0 3 * * *" 
+DOC_FALLBACK = os.environ.get("DOC_FALLBACK", "0").strip() == "1"
+PUBLISH_CRON = "0 3 * * *" # 06:00 МСК
 
 VK_API = "https://api.vk.com/method/"
 VK_V = "5.131"
+ATT_CACHE = "vk_att.json"
+PENDING = "pending_attach.json"
 POLLINATIONS_API = "https://image.pollinations.ai/prompt/"
+MAX_APIS = ["https://platform-api.max.ru", "https://platform-api2.max.ru", "https://botapi.max.ru"]
 
 BOOK_TAGS = "#ПавелГнесюк #книги #авторскийблог #писатель"
 MYSTERY_TAGS = "#ПавелГнесюк #тайны #история #загадки"
 RU = "\n\nВАЖНО: Пиши ТОЛЬКО на русском языке."
+
+GROQ_MODELS = ["meta-llama/llama-4-scout-17b-16e-instruct", "meta-llama/llama-4-maverick-17b-128e-instruct", "openai/gpt-oss-120b", "llama-3.1-8b-instant"]
 
 META_BAN = (
     " СТРОГИЙ ЗАПРЕТ: НЕ включай в финальный текст служебные слова и метки: "
@@ -43,10 +63,10 @@ META_BAN = (
 def log(msg):
     print(msg, flush=True)
 
-log("Версия ℹ️ gnesyuk-vk-agent v24.5 (Бесплатный Pollinations с контролем цвета + Fallback)")
+log("Версия ℹ️ gnesyuk-vk-agent v24.6 (Fix GigaChat + Colorful Pollinations + Safe Length)")
 
 # ============================================================
-# ИИ-ТЕКСТ (Оставлен без изменений из предыдущих версий)
+# ИИ-ТЕКСТ
 # ============================================================
 def _extract(r):
     try: return r["choices"][0]["message"]["content"].strip()
@@ -56,33 +76,44 @@ _GIGACHAT_TOKEN, _GIGACHAT_TOKEN_EXPIRY = None, 0
 
 def get_gigachat_token():
     global _GIGACHAT_TOKEN, _GIGACHAT_TOKEN_EXPIRY
-    if not GIGACHAT_CLIENT_ID or not GIGACHAT_CLIENT_SECRET: return None
-    if _GIGACHAT_TOKEN and time.time() < _GIGACHAT_TOKEN_EXPIRY: return _GIGACHAT_TOKEN
+    if not GIGACHAT_CLIENT_ID or not GIGACHAT_CLIENT_SECRET: 
+        log("⚠️ GigaChat keys missing in env")
+        return None
+    
+    if _GIGACHAT_TOKEN and time.time() < _GIGACHAT_TOKEN_EXPIRY: 
+        return _GIGACHAT_TOKEN
+    
     try:
         credentials = base64.b64encode(f"{GIGACHAT_CLIENT_ID}:{GIGACHAT_CLIENT_SECRET}".encode()).decode()
         r = requests.post("https://ngw.devices.sberbank.ru:9443/api/v2/oauth",
             headers={"Authorization": f"Basic {credentials}", "RqUID": str(uuid.uuid4()), "Content-Type": "application/x-www-form-urlencoded"},
             data={"scope": "GIGACHAT_API_PERS"}, timeout=30, verify=False)
+        
         if r.status_code == 200 and "access_token" in r.json():
             _GIGACHAT_TOKEN = r.json()["access_token"]
             _GIGACHAT_TOKEN_EXPIRY = time.time() + 1700
+            log("✅ GigaChat token acquired")
             return _GIGACHAT_TOKEN
+        else:
+            log(f"⚠️ GigaChat auth failed: {r.text[:100]}")
     except Exception as e:
-        log(f"⚠️ GigaChat auth: {e}")
+        log(f"⚠️ GigaChat exception: {e}")
     return None
 
 def ai_text(prompt, minlen=300, rescue_min=200):
     best_res = ""
+    
     def take(res, label):
         nonlocal best_res
         if not res: return None
         res = _strip_meta(res)
         if len(res) >= minlen:
-            log(f"✅ Успех: {label}, {len(res)} симв.")
+            log(f"✅ Success: {label}, {len(res)} chars.")
             return res
         if len(res) > len(best_res): best_res = res
         return None
 
+    # 1. GigaChat
     token = get_gigachat_token()
     if token:
         try:
@@ -93,11 +124,13 @@ def ai_text(prompt, minlen=300, rescue_min=200):
             if r.status_code == 200:
                 res = take(r.json()["choices"][0]["message"]["content"].strip(), "gigachat")
                 if res: return res
-        except Exception: pass
+        except Exception as e:
+            log(f"⚠️ GigaChat request error: {e}")
 
+    # 2. Groq
     for key in (GROQ_KEY, GROQ_KEY2):
         if not key: continue
-        for model in ["meta-llama/llama-4-scout-17b-16e-instruct", "llama-3.1-8b-instant"]:
+        for model in GROQ_MODELS:
             try:
                 r = requests.post("https://api.groq.com/openai/v1/chat/completions",
                     headers={"Authorization": f"Bearer {key}"},
@@ -112,7 +145,11 @@ def ai_text(prompt, minlen=300, rescue_min=200):
     return None
 
 def _strip_meta(text):
-    bad_prefixes = ["Эмоциональный крючок", "Крючок поста", "Длина поста", "Пост с отсылкой", "Пост:", "Текст:", "Ответ:", "Вот пост", "Вот текст", "Заголовок:", "Title:", "Caption:"]
+    bad_prefixes = [
+        "Эмоциональный крючок", "Крючок поста", "Длина поста", "Пост с отсылкой",
+        "Пост:", "Текст:", "Ответ:", "Вот пост", "Вот текст",
+        "Заголовок:", "Title:", "Caption:"
+    ]
     lines = text.split("\n")
     cleaned = []
     for line in lines:
@@ -127,12 +164,16 @@ def _strip_meta(text):
     return "\n".join(cleaned).strip()
 
 def _fix_bad_opening(text):
-    bad_openings = ["погрузитесь", "откройте", "узнайте", "представляем", "встречайте", "добро пожаловать", "читайте", "новый роман", "новая книга", "новая глава", "этот захватывающий", "этот увлекательный"]
+    bad_openings = [
+        "погрузитесь", "откройте", "узнайте", "представляем",
+        "встречайте", "добро пожаловать", "читайте", "новый роман",
+        "новая книга", "новая глава", "этот захватывающий", "этот увлекательный"
+    ]
     lines = text.split("\n")
     while lines:
         first = lines[0].strip().lower()
         if any(bad in first for bad in bad_openings):
-            log(f"🩹 Вырезана плохая первая строка: {lines[0][:80]}")
+            log(f"🩹 Cut bad opening: {lines[0][:50]}...")
             lines.pop(0)
         else:
             break
@@ -145,30 +186,44 @@ def clean_txt(t):
     return t
 
 def safe_trim(text, limit):
-    if len(text) <= limit: return text
+    if len(text) <= limit:
+        return text
     cut_pos = max(text.rfind("."), text.rfind("!"), text.rfind("?"), text.rfind("\n"))
-    if cut_pos > limit * 0.7: return text[:cut_pos+1]
+    if cut_pos > limit * 0.7:
+        return text[:cut_pos+1]
     return text[:limit].rsplit(' ', 1)[0] + "..."
 
+# ============================================================
+# ГЕНЕРАЦИЯ ПОСТОВ
+# ============================================================
 def build_book_post(book, day):
     t, a, s = book["title"], book["about"], book["series"]
-    prompt = (f"Напиши пост-анонс для соцсетей о романе Павла Гнесюка «{t}» (серия «{s}»). Сюжет: {a}. "
-              f"Требования: 1. ТОЛЬКО русский язык. 2. Первая строка — ЭМОЦИОНАЛЬНЫЙ КРЮЧОК (до 90 символов). "
-              f"3. Объем СТРОГО 550-650 символов. 4. Живой стиль. 5. Без ссылок." + META_BAN)
+    prompt = (f"Напиши пост-анонс для соцсетей о романе Павла Гнесюка «{t}» (серия «{s}»). "
+              f"Сюжет: {a}. Требования: 1. ТОЛЬКО русский язык. "
+              f"2. Первая строка — ЭМОЦИОНАЛЬНЫЙ КРЮЧОК (до 90 символов). "
+              f"3. Объем СТРОГО 550-650 символов (это критично!). "
+              f"4. Живой стиль, без слов 'инновационный', 'стоит отметить'. "
+              f"5. В конце НЕ добавляй ссылки, я добавлю их сам."
+              + META_BAN)
     txt = ai_text(prompt, minlen=500, rescue_min=400)
     return clean_txt(txt) if txt else f"РОМАН «{t.upper()}»: {a}"
 
 def build_mystery_post(mystery, day):
     topic = mystery["topic"]
     facts = "\n".join([f"- {f}" for f in mystery["facts"]])
-    prompt = (f"Напиши захватывающий пост на тему: {topic}. Используй эти факты: {facts}. "
-              f"Требования: 1. ТОЛЬКО русский язык. 2. Первая строка — ЭМОЦИОНАЛЬНЫЙ КРЮЧОК (до 90 символов). "
-              f"3. Объем СТРОГО 550-650 символов. 4. Интригующий стиль. 5. Без ссылок." + META_BAN)
+    prompt = (f"Напиши захватывающий пост на тему: {topic}. "
+              f"Используй эти факты: {facts}. "
+              f"Требования: 1. ТОЛЬКО русский язык. "
+              f"2. Первая строка — ЭМОЦИОНАЛЬНЫЙ КРЮЧОК (до 90 символов). "
+              f"3. Объем СТРОГО 550-650 символов (это критично!). "
+              f"4. Живой, интригующий стиль, без нейрослопа. "
+              f"5. В конце НЕ добавляй ссылки, я добавлю их сам."
+              + META_BAN)
     txt = ai_text(prompt, minlen=500, rescue_min=400)
     return clean_txt(txt) if txt else f"Загадка: {topic}\n\n{mystery['facts'][0]}"
 
 # ============================================================
-# КАРТИНКИ v24.5: Оптимизированный бесплатный Pollinations
+# КАРТИНКИ v24.6: Оптимизированный бесплатный Pollinations
 # ============================================================
 def check_image_quality(img_bytes):
     """Проверяет, не слишком ли темная или серая картинка."""
@@ -179,10 +234,10 @@ def check_image_quality(img_bytes):
         
         # Если средняя яркость меньше 40 (очень темно) или больше 240 (очень светло/бело)
         if mean_brightness < 40 or mean_brightness > 240:
-            return False, f"Яркость {mean_brightness:.1f} (слишком экстремальная)"
+            return False, f"Brightness {mean_brightness:.1f} (extreme)"
         return True, "OK"
     except Exception as e:
-        return False, f"Ошибка анализа: {e}"
+        return False, f"Analysis error: {e}"
 
 def download_image(scene_text, seed):
     """
@@ -202,7 +257,7 @@ def download_image(scene_text, seed):
         try:
             from openai import OpenAI
             client = OpenAI(api_key=OPENAI_KEY)
-            log("🎨 [1/2] Пробую OpenAI...")
+            log("🎨 [1/2] Trying OpenAI...")
             response = client.images.generate(
                 model="dall-e-3",
                 prompt=base_desc + " No text, no watermark.",
@@ -212,15 +267,15 @@ def download_image(scene_text, seed):
             r = requests.get(url, timeout=60)
             if r.status_code == 200:
                 img_bytes = r.content
-                log("✅ OpenAI успешен!")
+                log("✅ OpenAI success!")
         except ImportError:
             pass
         except Exception as e:
-            log(f"⚠️ OpenAI недоступен ({str(e)[:50]}). Переключаюсь на Pollinations.")
+            log(f"⚠️ OpenAI unavailable ({str(e)[:50]}). Switching to Pollinations.")
 
     # --- ПОПЫТКА 2: Pollinations (Основной бесплатный движок) ---
     if not img_bytes:
-        log("🎨 [2/2] Генерация через Pollinations (Flux)...")
+        log("🎨 [2/2] Generating via Pollinations (Flux)...")
         
         # КРИТИЧЕСКИ ВАЖНЫЕ ДОБАВЛЕНИЯ ДЛЯ ЦВЕТА И КАЧЕСТВА
         color_boost = ", vibrant colors, saturated, warm tones, golden hour lighting, high contrast, sharp focus"
@@ -245,20 +300,20 @@ def download_image(scene_text, seed):
                     
                     if is_good:
                         img_bytes = r.content
-                        log(f"✅ Pollinations успешен! (Попытка {attempt+1})")
+                        log(f"✅ Pollinations success! (Attempt {attempt+1})")
                         break
                     else:
-                        log(f"⚠️ Попытка {attempt+1}: Плохое качество ({reason}). Пробую другой сид...")
+                        log(f"⚠️ Attempt {attempt+1}: Bad quality ({reason}). Retrying with different seed...")
                 else:
-                    log(f"⚠️ Попытка {attempt+1}: HTTP {r.status_code}")
+                    log(f"⚠️ Attempt {attempt+1}: HTTP {r.status_code}")
                     
             except Exception as e:
-                log(f"⚠️ Попытка {attempt+1}: Исключение {e}")
+                log(f"⚠️ Attempt {attempt+1}: Exception {e}")
             
             time.sleep(2) # Пауза между попытками
 
     if not img_bytes:
-        log("❌ Все попытки генерации провалились")
+        log("❌ All generation attempts failed")
         return None
         
     return img_bytes
@@ -284,10 +339,10 @@ def convert_to_jpeg(img_bytes):
         im.save(buf, format="JPEG", quality=90, optimize=True, progressive=True)
         data = buf.getvalue()
         
-        log(f"🖼 Финал обработки: {im.size[0]}x{im.size[1]}, {len(data)//1024} KB")
+        log(f"🖼 Final processing: {im.size[0]}x{im.size[1]}, {len(data)//1024} KB")
         return data
     except Exception as e:
-        log(f"⚠️ Ошибка конвертации JPEG: {e}")
+        log(f"⚠️ JPEG conversion error: {e}")
         return img_bytes
 
 def commit_image(img_file):
@@ -297,14 +352,14 @@ def commit_image(img_file):
         subprocess.run(["git", "add", img_file], check=True, capture_output=True)
         subprocess.run(["git", "commit", "-m", f"chore: add image {os.path.basename(img_file)} [skip ci]"], check=True, capture_output=True)
         subprocess.run(["git", "push"], check=True, capture_output=True)
-        log(f"✅ Картинка {img_file} закоммичена")
+        log(f"✅ Image {img_file} committed")
         return True
     except Exception as e:
-        log(f"⚠️ Коммит картинки не удался: {e}")
+        log(f"⚠️ Image commit failed: {e}")
         return False
 
 # ============================================================
-# ВК / TG / MAX (Без изменений, стандартная логика)
+# ВК / TG / MAX (Стандартная логика)
 # ============================================================
 def vk_call(method, params=None, token=None, retries=4):
     p = dict(params or {})
@@ -324,7 +379,7 @@ def vk_call(method, params=None, token=None, retries=4):
 def flood_probe():
     srv = vk_call("photos.getWallUploadServer", {"owner_id": "-" + VK_GROUP_ID}, token=VK_USER_TOKEN, retries=1)
     ok = bool(srv and "upload_url" in srv)
-    log(f"🌡 Барометр флуда: {'ЗЁЛЕНЫЙ' if ok else 'КРАСНЫЙ'}")
+    log(f"🌡 Flood probe: {'GREEN' if ok else 'RED'}")
     return ok, srv
 
 def finish_upload(srv, img_bytes):
@@ -343,8 +398,9 @@ def vk_post_wall(text, attachment=None):
     if not res and VK_USER_TOKEN:
         res = vk_call("wall.post", {"owner_id": "-" + VK_GROUP_ID, "message": text, "attachments": attachment, "from_group": 1}, token=VK_USER_TOKEN)
     if res:
-        log(f"✅ ВК: пост опубликован: https://vk.com/wall-{VK_GROUP_ID}_{res.get('post_id')}")
-    return res
+        log(f"✅ VK: Post published: https://vk.com/wall-{VK_GROUP_ID}_{res.get('post_id')}")
+        return res
+    return None
 
 def tg_post(img_bytes, caption):
     if not TG_BOT or not TG_CHAT: return False
@@ -359,20 +415,20 @@ def tg_post(img_bytes, caption):
                 data={"chat_id": TG_CHAT, "caption": caption},
                 files={"photo": ("cover.jpg", img_bytes, "image/jpeg")}, timeout=120).json()
             if r.get("ok"):
-                log(f"✅ TG: пост с фото отправлен")
+                log(f"✅ TG: Photo post sent")
                 return True
         except Exception as e:
-            log(f"⚠️ TG фото ошибка: {e}")
+            log(f"⚠️ TG photo error: {e}")
     
     # Fallback текст
     try:
         r = requests.post(f"https://api.telegram.org/bot{TG_BOT}/sendMessage",
             data={"chat_id": TG_CHAT, "text": caption}, timeout=60).json()
         if r.get("ok"):
-            log(f"✅ TG: текстовый пост отправлен")
+            log(f"✅ TG: Text post sent")
             return True
     except Exception as e:
-        log(f"⚠️ TG текст ошибка: {e}")
+        log(f"⚠️ TG text error: {e}")
     return False
 
 def max_post(img_bytes, text):
@@ -412,7 +468,7 @@ def max_post(img_bytes, text):
                 r = requests.post(f"{base}/messages", headers=hdr, params={"chat_id": chat_val}, json=payload, timeout=60, verify=False).json()
                 
                 if isinstance(r, dict) and (r.get("success") is True or isinstance(r.get("message"), dict)):
-                    log(f"✅ MAX: пост отправлен")
+                    log(f"✅ MAX: Post sent")
                     return True
             except Exception:
                 continue
@@ -420,7 +476,7 @@ def max_post(img_bytes, text):
 
 def save_pending(day, post_id, caption, img_file):
     json.dump({"day": day, "post_id": post_id, "caption": caption, "img_file": img_file}, open(PENDING, "w", encoding="utf-8"), ensure_ascii=False)
-    log(f"💾 pending_attach.json создан")
+    log(f"💾 pending_attach.json created")
 
 def load_pending():
     try:
@@ -429,7 +485,7 @@ def load_pending():
     return None
 
 def run_tick(day):
-    log("🕐 Режим: ТИК")
+    log("🕐 Mode: TICK")
     pend = load_pending()
     if not pend or pend.get("day", 0) < day - 1:
         if os.path.exists(PENDING): os.remove(PENDING)
@@ -447,7 +503,7 @@ def run_tick(day):
     if att:
         res = vk_call("wall.edit", {"owner_id": "-" + VK_GROUP_ID, "post_id": pend["post_id"], "message": pend["caption"], "attachments": att}, retries=2)
         if res:
-            log(f"✅ ВК: картинка докреплена")
+            log(f"✅ VK: Image attached to post {pend['post_id']}")
             os.remove(PENDING)
 
 def main():
@@ -458,7 +514,7 @@ def main():
         run_tick(day)
         return
 
-    log("📢 Режим: ПУБЛИКАЦИЯ")
+    log("📢 Mode: PUBLICATION")
     
     is_mystery = random.random() < 0.7
     mystery_data, book_data = None, None
@@ -468,7 +524,7 @@ def main():
         try:
             mysteries = json.load(open("mysteries.json", encoding="utf-8"))
             mystery_data = random.choice(mysteries)
-            log(f"🔮 Тема-тайна: {mystery_data['topic']}")
+            log(f"🔮 Mystery topic: {mystery_data['topic']}")
             platforms = mystery_data.get("platforms", ["tg", "max"])
         except Exception:
             is_mystery = False
@@ -476,7 +532,7 @@ def main():
     if not is_mystery:
         books = json.load(open("books.json", encoding="utf-8"))["books"]
         book_data = books[day % len(books)]
-        log(f"📚 Книга: «{book_data['title']}»")
+        log(f"📚 Book selected: «{book_data['title']}»")
 
     if is_mystery:
         post = build_mystery_post(mystery_data, day)
@@ -493,7 +549,7 @@ def main():
     max_post_len = 600
     post = safe_trim(post, max_post_len)
     caption = post + link_part + "\n\n" + tags
-    log(f"📝 Длина поста: {len(caption)} симв.")
+    log(f"📝 Post length: {len(caption)} chars.")
 
     img_bytes, img_file = None, ""
     if TEST_IMAGE and os.path.exists(TEST_IMAGE):
@@ -519,7 +575,7 @@ def main():
         if green:
             att = finish_upload(srv, img_bytes)
         else:
-            log("⚠️ Флуд красный: картинка уйдёт в pending")
+            log("⚠️ Red flood: image will go to pending")
             
     if "vk" in platforms:
         res = vk_post_wall(caption, att)
@@ -534,7 +590,7 @@ def main():
         ok_max = max_post(img_bytes, caption)
 
     log("=" * 50)
-    log(f"✅ FINISH: ВК={'ДА' if ok_vk else 'НЕТ'}, TG={'ДА' if ok_tg else 'НЕТ'}, MAX={'ДА' if ok_max else 'НЕТ'}")
+    log(f"✅ FINISH: VK={'YES' if ok_vk else 'NO'}, TG={'YES' if ok_tg else 'NO'}, MAX={'YES' if ok_max else 'NO'}")
     if not (ok_vk or ok_tg or ok_max):
         raise SystemExit(1)
 
@@ -542,5 +598,5 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        log(f"❌ КРИТИЧЕСКАЯ ОШИБКА: {e}")
+        log(f"❌ CRITICAL ERROR: {e}")
         raise
