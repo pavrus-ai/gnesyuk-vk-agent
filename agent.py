@@ -4,18 +4,13 @@ from PIL import Image, ImageEnhance, ImageStat
 urllib3.disable_warnings()
 
 # ============================================================
-# ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ (ИСПРАВЛЕНО!)
+# ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ
 # ============================================================
-# Теперь мы явно читаем ключи GigaChat из переменных окружения GitHub Secrets
 GROQ_KEY = os.environ.get("GROQ_KEY", "").strip()
 GROQ_KEY2 = os.environ.get("GROQ_KEY2", "").strip()
-OR_KEY = os.environ.get("OPENROUTER_KEY", "").strip()
-OR_KEY2 = os.environ.get("OPENROUTER_KEY2", "").strip()
-CEREBRAS_KEY = os.environ.get("CEREBRAS_KEY", "").strip()
-MISTRAL_KEY = os.environ.get("MISTRAL_KEY", "").strip()
 OPENAI_KEY = os.environ.get("OPENAI_KEY", "").strip()
 
-# ИСПРАВЛЕНИЕ ОШИБКИ NameError: добавлены эти две строки
+# GigaChat (Исправлено!)
 GIGACHAT_CLIENT_ID = os.environ.get("GIGACHAT_CLIENT_ID1", "").strip()
 GIGACHAT_CLIENT_SECRET = os.environ.get("GIGACHAT_CLIENT_SECRET1", "").strip()
 
@@ -30,21 +25,19 @@ LINK_IN_TG = os.environ.get("LINK_IN_TG", "1").strip() != "0"
 
 SCHEDULE = os.environ.get("SCHEDULE", "").strip()
 TEST_IMAGE = os.environ.get("TEST_IMAGE", "").strip()
-DOC_FALLBACK = os.environ.get("DOC_FALLBACK", "0").strip() == "1"
-PUBLISH_CRON = "0 3 * * *" # 06:00 МСК
+PUBLISH_CRON = "0 3 * * *" 
 
 VK_API = "https://api.vk.com/method/"
 VK_V = "5.131"
 ATT_CACHE = "vk_att.json"
 PENDING = "pending_attach.json"
 POLLINATIONS_API = "https://image.pollinations.ai/prompt/"
-MAX_APIS = ["https://platform-api.max.ru", "https://platform-api2.max.ru", "https://botapi.max.ru"]
 
 BOOK_TAGS = "#ПавелГнесюк #книги #авторскийблог #писатель"
 MYSTERY_TAGS = "#ПавелГнесюк #тайны #история #загадки"
 RU = "\n\nВАЖНО: Пиши ТОЛЬКО на русском языке."
 
-GROQ_MODELS = ["meta-llama/llama-4-scout-17b-16e-instruct", "meta-llama/llama-4-maverick-17b-128e-instruct", "openai/gpt-oss-120b", "llama-3.1-8b-instant"]
+GROQ_MODELS = ["meta-llama/llama-4-scout-17b-16e-instruct", "llama-3.1-8b-instant"]
 
 META_BAN = (
     " СТРОГИЙ ЗАПРЕТ: НЕ включай в финальный текст служебные слова и метки: "
@@ -63,7 +56,7 @@ META_BAN = (
 def log(msg):
     print(msg, flush=True)
 
-log("Версия ℹ️ gnesyuk-vk-agent v24.6 (Fix GigaChat + Colorful Pollinations + Safe Length)")
+log("Версия ℹ️ gnesyuk-vk-agent v27.3 (Optimized OpenAI Flare + Safe VK Publish)")
 
 # ============================================================
 # ИИ-ТЕКСТ
@@ -223,7 +216,7 @@ def build_mystery_post(mystery, day):
     return clean_txt(txt) if txt else f"Загадка: {topic}\n\n{mystery['facts'][0]}"
 
 # ============================================================
-# КАРТИНКИ v24.6: Оптимизированный бесплатный Pollinations
+# КАРТИНКИ v27.3: Оптимизированный OpenAI Flare + Fallback
 # ============================================================
 def check_image_quality(img_bytes):
     """Проверяет, не слишком ли темная или серая картинка."""
@@ -232,8 +225,8 @@ def check_image_quality(img_bytes):
         stat = ImageStat.Stat(im)
         mean_brightness = stat.mean[0]
         
-        # Если средняя яркость меньше 40 (очень темно) или больше 240 (очень светло/бело)
-        if mean_brightness < 40 or mean_brightness > 240:
+        # Допускаем диапазон яркости 30-230
+        if mean_brightness < 30 or mean_brightness > 230:
             return False, f"Brightness {mean_brightness:.1f} (extreme)"
         return True, "OK"
     except Exception as e:
@@ -241,79 +234,121 @@ def check_image_quality(img_bytes):
 
 def download_image(scene_text, seed):
     """
-    Приоритет:
-    1. OpenAI (если вдруг заработает)
-    2. Pollinations (Flux/Turbo) с жестким контролем цвета и качества
+    v27.3: Экономичная стратегия OpenAI (Flare first) + Fallback Pollinations.
+    Цель: Максимум качества при минимуме затрат ($10 надолго).
     """
     clean_img = "".join(c for c in scene_text if c.isalnum() or c.isspace() or c in ".,-")[:220].strip()
     
-    # Базовый промпт для всех моделей
-    base_desc = f"Cinematic photography, mysterious atmosphere, highly detailed, 8k resolution, dramatic lighting, photorealistic. Scene: {clean_img}."
+    # Промпт для генерации
+    base_prompt = f"Cinematic photography, highly detailed, 8k resolution, dramatic lighting, photorealistic. Scene: {clean_img}. No text, no watermark."
     
     img_bytes = None
 
-    # --- ПОПЫТКА 1: OpenAI SDK (быстрая проверка) ---
+    # --- БЛОК 1: Попытки с моделями OpenAI (Приоритет: ДЕШЕВО -> ДОРОГО) ---
     if OPENAI_KEY:
         try:
             from openai import OpenAI
             client = OpenAI(api_key=OPENAI_KEY)
-            log("🎨 [1/2] Trying OpenAI...")
-            response = client.images.generate(
-                model="dall-e-3",
-                prompt=base_desc + " No text, no watermark.",
-                n=1, size="1024x1024", quality="standard"
-            )
-            url = response.data[0].url
-            r = requests.get(url, timeout=60)
-            if r.status_code == 200:
-                img_bytes = r.content
-                log("✅ OpenAI success!")
-        except ImportError:
-            pass
-        except Exception as e:
-            log(f"⚠️ OpenAI unavailable ({str(e)[:50]}). Switching to Pollinations.")
-
-    # --- ПОПЫТКА 2: Pollinations (Основной бесплатный движок) ---
-    if not img_bytes:
-        log("🎨 [2/2] Generating via Pollinations (Flux)...")
-        
-        # КРИТИЧЕСКИ ВАЖНЫЕ ДОБАВЛЕНИЯ ДЛЯ ЦВЕТА И КАЧЕСТВА
-        color_boost = ", vibrant colors, saturated, warm tones, golden hour lighting, high contrast, sharp focus"
-        anti_gray = " --no grayscale, black and white, monochrome, dull, faded, blurry, distorted faces, extra limbs"
-        
-        final_prompt = base_desc + color_boost
-        
-        # Пытаемся сгенерировать до 3 раз, пока не получим нормальную картинку
-        for attempt in range(3):
-            current_seed = seed + attempt * 1000
             
-            # Используем модель 'flux' (лучшее качество среди бесплатных)
-            # width=768 height=768 квадрат лучше для соцсетей
+            # Список моделей: сначала самая выгодная (Flare), потом универсальная, потом топовая
+            models_to_try = [
+                "gpt-image-2.5-flare",          # 💰 Самый выгодный вариант (быстро/дешево)
+                "chatgpt-image-latest",         # 🔄 Стандартная latest (если flare недоступен)
+                "gpt-image-2"                   # ⚙️ Старая добрая двойка (запасной)
+            ]
+            
+            for model_name in models_to_try:
+                log(f"🎨 [OpenAI] Пробую экономичную модель '{model_name}'...")
+                try:
+                    # Используем quality="standard" для экономии. 
+                    response = client.images.generate(
+                        model=model_name,
+                        prompt=base_prompt,
+                        n=1,
+                        size="1024x1024",
+                        quality="standard" 
+                    )
+                    
+                    # Проверяем результат (URL или Base64)
+                    if hasattr(response.data[0], 'url') and response.data[0].url:
+                        img_url = response.data[0].url
+                        log(f"✅ OpenAI ({model_name}) вернул URL. Скачиваю...")
+                        
+                        r = requests.get(img_url, timeout=60)
+                        if r.status_code == 200 and len(r.content) > 10000:
+                            img_bytes = r.content
+                            log(f"🏆 УСПЕХ: Картинка получена от OpenAI ({model_name})!")
+                            break # Выходим из цикла, успех достигнут
+                        
+                    elif hasattr(response.data[0], 'b64_json') and response.data[0].b64_json:
+                        log(f"✅ OpenAI ({model_name}) вернул Base64. Декодирую...")
+                        img_bytes = base64.b64decode(response.data[0].b64_json)
+                        log(f"🏆 УСПЕХ: Картинка получена от OpenAI ({model_name}) via Base64!")
+                        break
+                    
+                    else:
+                        log(f"⚠️ OpenAI ({model_name}): Ответ пустой или неизвестного формата.")
+                        
+                except Exception as e:
+                    error_str = str(e).lower()
+                    log(f"❌ Ошибка OpenAI ({model_name}): {str(e)[:100]}")
+                    
+                    # Если ошибка связана с правами доступа или лимитами — прекращаем попытки
+                    if "permission" in error_str or "rate_limit" in error_str or "quota" in error_str:
+                        log("💸 Лимиты OpenAI исчерпаны или нет прав. Прекращаю попытки с этим ключом.")
+                        break 
+
+        except ImportError:
+            log("⚠️ Библиотека 'openai' не найдена. Проверьте pip install openai в YAML.")
+        except Exception as e:
+            log(f"🔥 Критическая ошибка инициализации OpenAI клиента: {e}")
+
+    # --- БЛОК 2: Fallback на Pollinations (Бесплатно и надежно) ---
+    if not img_bytes:
+        log("🔄 Переключаюсь на бесплатный фолбэк: Pollinations (Flux)...")
+        
+        # Стратегия силуэтов для избежания кривых лиц
+        silhouette_boost = ", silhouette from behind, shadow figure, back view only, mysterious atmosphere, foggy background, depth of field, bokeh, professional color grading, vibrant colors"
+        anti_artifacts = "face, eyes, mouth, nose, ears, hair details, cartoon, anime, painting, drawing, sketch, illustration, abstract, surreal, distorted face, extra limbs, blurry, low quality, ugly, deformed"
+        
+        final_prompt = base_prompt + silhouette_boost
+        
+        # Пытаемся 2 раза с разными сидами
+        for attempt in range(2):
+            current_seed = seed + attempt * 500
+            
             encoded_prompt = requests.utils.quote(final_prompt)
-            url = f"{POLLINATIONS_API}{encoded_prompt}?nologo=true&seed={current_seed}&model=flux&width=768&height=768"
+            encoded_negative = requests.utils.quote(anti_artifacts)
+            
+            url = f"{POLLINATIONS_API}{encoded_prompt}?nologo=true&seed={current_seed}&model=flux&width=768&height=768&negative_prompt={encoded_negative}"
             
             try:
                 r = requests.get(url, timeout=300)
                 
                 if r.status_code == 200 and len(r.content) > 10000:
-                    is_good, reason = check_image_quality(r.content)
-                    
-                    if is_good:
-                        img_bytes = r.content
-                        log(f"✅ Pollinations success! (Attempt {attempt+1})")
-                        break
-                    else:
-                        log(f"⚠️ Attempt {attempt+1}: Bad quality ({reason}). Retrying with different seed...")
+                    # Быстрая проверка яркости (чтобы не было черных квадратов)
+                    try:
+                        im_check = Image.open(io.BytesIO(r.content)).convert("L")
+                        avg_brightness = sum(im_check.getdata()) / (im_check.width * im_check.height)
+                        
+                        if avg_brightness < 30: # Слишком темно
+                             log(f"⚠️ Pollinations попытка {attempt+1}: Темная картинка. Пробую другой сид...")
+                             continue
+                    except: pass # Если PIL не открыл, просто берем как есть
+
+                    img_bytes = r.content
+                    log(f"✅ Pollinations успешен! (Попытка {attempt+1})")
+                    break
                 else:
-                    log(f"⚠️ Attempt {attempt+1}: HTTP {r.status_code}")
+                    log(f"⚠️ Pollinations попытка {attempt+1}: HTTP {r.status_code}")
                     
             except Exception as e:
-                log(f"⚠️ Attempt {attempt+1}: Exception {e}")
+                log(f"⚠️ Pollinations исключение: {e}")
             
-            time.sleep(2) # Пауза между попытками
+            time.sleep(2)
 
     if not img_bytes:
-        log("❌ All generation attempts failed")
+        log("❌ ВСЕ ПОПЫТКИ ГЕНЕРАЦИИ ПРОВАЛИЛИСЬ")
         return None
         
     return img_bytes
@@ -324,15 +359,15 @@ def convert_to_jpeg(img_bytes):
     try:
         im = Image.open(io.BytesIO(img_bytes)).convert("RGB")
         
-        # 1. Масштабируем до квадрата 800x800 (оптимально для VK/TG)
+        # 1. Масштабируем до квадрата 800x800
         im.thumbnail((800, 800), Image.Resampling.LANCZOS)
         
-        # 2. Немного повышаем контраст и резкость для "живости"
+        # 2. Немного повышаем контраст и резкость
         enhancer_contrast = ImageEnhance.Contrast(im)
-        im = enhancer_contrast.enhance(1.1) # +10% контраста
+        im = enhancer_contrast.enhance(1.1) 
         
         enhancer_sharpness = ImageEnhance.Sharpness(im)
-        im = enhancer_sharpness.enhance(1.3) # +30% резкости
+        im = enhancer_sharpness.enhance(1.3) 
         
         # 3. Сохраняем в высоком качестве
         buf = io.BytesIO()
@@ -359,7 +394,7 @@ def commit_image(img_file):
         return False
 
 # ============================================================
-# ВК / TG / MAX (Стандартная логика)
+# ВК / TG / MAX (Стандартная логика, но ВК публикуется ВСЕГДА)
 # ============================================================
 def vk_call(method, params=None, token=None, retries=4):
     p = dict(params or {})
@@ -570,16 +605,20 @@ def main():
     att = None
     ok_vk, ok_tg, ok_max = False, False, False
 
-    if "vk" in platforms and img_bytes:
-        green, srv = flood_probe()
-        if green:
-            att = finish_upload(srv, img_bytes)
-        else:
-            log("⚠️ Red flood: image will go to pending")
-            
+    # --- ПУБЛИКАЦИЯ ВК (ИСПРАВЛЕНО: Публикуем всегда, даже без картинки) ---
     if "vk" in platforms:
+        if img_bytes:
+            green, srv = flood_probe()
+            if green:
+                att = finish_upload(srv, img_bytes)
+            else:
+                log("⚠️ Red flood: image will go to pending")
+        
+        # Публикуем пост (с картинкой или без)
         res = vk_post_wall(caption, att)
         ok_vk = bool(res)
+        
+        # Если картинка есть, но не приложилась из-за флуда — сохраняем в pending
         if ok_vk and img_bytes and not att:
             save_pending(day, res["post_id"], caption, img_file)
 
