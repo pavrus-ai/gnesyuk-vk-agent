@@ -260,13 +260,13 @@ def download_image(scene_text, seed):
             for model_name in models_to_try:
                 log(f"🎨 [OpenAI] Пробую экономичную модель '{model_name}'...")
                 try:
-                    # Используем quality="standard" для экономии. 
+                    # Используем quality="medium" для экономии. 
                     response = client.images.generate(
                         model=model_name,
                         prompt=base_prompt,
                         n=1,
                         size="1024x1024",
-                        quality="standard" 
+                        quality="medium" 
                     )
                     
                     # Проверяем результат (URL или Base64)
