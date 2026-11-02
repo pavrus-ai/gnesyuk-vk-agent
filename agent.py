@@ -58,7 +58,7 @@ META_BAN = (
 def log(msg):
     print(msg, flush=True)
 
-log("Версия ℹ️ gnesyuk-vk-agent v24.0 (SDK OpenAI + Pollinations fallback + длина 600)")
+log("Версия ℹ️ gnesyuk-vk-agent v24.1 (GPT-Image/DALL-E 3 + обрезка TG caption + Pollinations fallback)")
 
 # ============================================================
 # ИИ-ТЕКСТ
@@ -224,65 +224,54 @@ def build_mystery_post(mystery, day):
     return clean_txt(txt) if txt else f"Загадка: {topic}\n\n{mystery['facts'][0]}"
 
 # ============================================================
-# КАРТИНКИ v24.0: SDK OpenAI + Pollinations fallback
+# КАРТИНКИ v24.1: GPT-Image / DALL-E 3 + Pollinations fallback
 # ============================================================
 def download_image(scene_text, seed):
-    """v24.0: Официальный OpenAI SDK → fallback на Pollinations."""
+    """v24.1: Пробуем современные модели OpenAI, затем фолбэк на Pollinations."""
     clean_img = "".join(c for c in scene_text if c.isalnum() or c.isspace() or c in ".,-")[:220].strip()
     base_prompt = f"Cinematic, mysterious, highly detailed, 8k, dramatic lighting. Scene: {clean_img}."
     
-    # --- ПОПЫТКА 1: Официальный OpenAI SDK ---
+    # --- ПОПЫТКА 1 & 2: Официальный OpenAI SDK ---
     if OPENAI_KEY:
         try:
             from openai import OpenAI
-            log("🎨 Пробую OpenAI через официальный SDK (dall-e-3)...")
-            
             client = OpenAI(api_key=OPENAI_KEY)
             
-            response = client.images.generate(
-                model="dall-e-3",
-                prompt=base_prompt + " No text, no watermark.",
-                n=1,
-                size="1024x1024",
-                quality="standard"
-            )
+            # Список моделей для попытки (сначала новая, потом старая)
+            models_to_try = ["gpt-image-2.5-flare", "dall-e-3"]
             
-            img_url = response.data[0].url
-            if img_url:
-                log(f"✅ OpenAI SDK вернул URL: {img_url[:50]}...")
-                r = requests.get(img_url, timeout=60)
-                if r.status_code == 200 and len(r.content) > 10000:
-                    log("✅ OpenAI SDK dall-e-3 успешен!")
-                    return r.content
-                else:
-                    log(f"⚠️ Не удалось скачать картинку по URL: статус={r.status_code}")
-                    
-        except ImportError:
-            log("⚠️ Библиотека 'openai' не установлена. Проверяйте requirements/yaml.")
-        except Exception as e:
-            error_str = str(e)
-            log(f"⚠️ Ошибка OpenAI SDK dall-e-3: {error_str[:200]}")
-            # Если ошибка связана с моделью, пробуем dall-e-2
-            if "model" in error_str.lower() or "invalid_value" in error_str or "не существует" in error_str:
+            for model_name in models_to_try:
+                log(f"🎨 Пробую OpenAI SDK с моделью '{model_name}'...")
                 try:
-                    log("🔄 Пробую OpenAI SDK с моделью dall-e-2...")
                     response = client.images.generate(
-                        model="dall-e-2",
+                        model=model_name,
                         prompt=base_prompt + " No text, no watermark.",
                         n=1,
                         size="1024x1024"
                     )
+                    
                     img_url = response.data[0].url
                     if img_url:
+                        log(f"✅ OpenAI ({model_name}) вернул URL, скачиваем...")
                         r = requests.get(img_url, timeout=60)
                         if r.status_code == 200 and len(r.content) > 10000:
-                            log("✅ OpenAI SDK dall-e-2 вернул картинку")
+                            log(f"✅ УСПЕХ: OpenAI ({model_name}) сгенерировал картинку!")
                             return r.content
-                except Exception as e2:
-                    log(f"⚠️ Вторая попытка OpenAI SDK тоже упала: {str(e2)[:100]}")
+                        else:
+                            log(f"⚠️ Не удалось скачать картинку по URL от OpenAI ({model_name}).")
+                            
+                except Exception as e:
+                    error_str = str(e)
+                    log(f"⚠️ Ошибка при использовании модели '{model_name}': {error_str[:200]}")
+                    # Продолжаем цикл, чтобы попробовать следующую модель
+                    
+        except ImportError:
+            log("⚠️ Библиотека 'openai' не установлена. Проверяйте requirements/yaml.")
+        except Exception as e:
+            log(f"❌ Общая ошибка инициализации OpenAI клиента: {str(e)[:200]}")
 
-    # --- ПОПЫТКА 2: Pollinations (бесплатный фолбэк) ---
-    log("🎨 Пробую Pollinations (fallback)...")
+    # --- ПОПЫТКА 3: Pollinations (бесплатный фолбэк) ---
+    log("🎨 Переключаюсь на бесплатный фолбэк: Pollinations...")
     p_poll = base_prompt + " People ONLY as distant silhouettes from behind. No text, no watermark."
     
     attempts = [
@@ -377,11 +366,17 @@ def vk_post_wall(text, attachment=None):
     return res
 
 # ============================================================
-# TELEGRAM (fallback без фото)
+# TELEGRAM v24.1: обрезка caption до 1000 символов
 # ============================================================
 def tg_post(img_bytes, caption):
     if not TG_BOT or not TG_CHAT: return False
     
+    # ОБРЕЗАНИЕ ТЕКСТА ДЛЯ TELEGRAM
+    if len(caption) > 1000:
+        original_len = len(caption)
+        caption = caption[:1000] + "..."
+        log(f"✂️ Текст для TG был слишком длинным ({original_len}), обрезан до 1000 символов.")
+
     if img_bytes:
         try:
             r = requests.post(f"https://api.telegram.org/bot{TG_BOT}/sendPhoto",
@@ -537,7 +532,7 @@ def run_tick(day):
         log("⚠️ Загрузка на зелёном барометре не удалась — жду следующий тик")
 
 # ============================================================
-# ГЛАВНАЯ ЛОГИКА v24.0
+# ГЛАВНАЯ ЛОГИКА v24.1
 # ============================================================
 def main():
     day = datetime.date.today().toordinal()
