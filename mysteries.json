@@ -2,41 +2,45 @@
   {
     "topic": "Экспедиция Франклина",
     "facts": [
-      "Два корабля и 129 человек пропали в Арктике при поиске Северо-Западного прохода.",
-      "Причины гибели команды до сих пор реконструируются по редким находкам и свидетельствам.",
-      "История стала одной из самых известных арктических катастроф XIX века."
+      "Два корабля HMS Erebus и HMS Terror с 129 членами экипажа пропали в Арктике в 1845 году.",
+      "Экспедиция под руководством сэра Джона Франклина искала Северо-Западный проход.",
+      "Останки кораблей найдены только в 2014 и 2016 годах на дне океана.",
+      "Причины гибели включали цингу, отравление свинцом и, по некоторым данным, каннибализм."
     ],
-    "image_prompt": "Two abandoned wooden ships trapped in Arctic ice, snowstorm, 1840s naval expedition, cinematic, mysterious, photorealistic",
+    "image_prompt": "Two abandoned wooden ships HMS Erebus and HMS Terror trapped in Arctic ice during 1845 Franklin expedition, snowstorm, dramatic chiaroscuro lighting, cinematic, mysterious, photorealistic, 8k resolution",
     "platforms": ["tg", "max"]
   },
   {
     "topic": "Экспедиция Фоссета",
     "facts": [
-      "Полковник Перси Фоссет исчез в Амазонии в поисках «затерянного города Z».",
+      "Полковник Перси Фоссет исчез в Амазонии в 1925 году в поисках «затерянного города Z».",
       "Последние письма и маршрут экспедиции не дали точного ответа о судьбе группы.",
-      "Поиски города и причин исчезновения продолжаются до сих пор."
+      "Поиски города и причин исчезновения продолжаются до сих пор.",
+      "Фоссет верил в существование древней цивилизации, более развитой, чем известные культуры того времени."
     ],
-    "image_prompt": "1920s explorer in Amazon jungle, ancient lost city ruins hidden in mist, cinematic, mysterious, highly detailed",
+    "image_prompt": "1920s British explorer Percy Fawcett in Amazon jungle, ancient lost city ruins hidden in mist, dramatic lighting, cinematic, mysterious, highly detailed, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
     "topic": "Флот Драй Рок",
     "facts": [
-      "Легендарная испанская эскадра, якобы исчезнувшая у берегов Австралии.",
+      "Легендарная испанская эскадра, якобы исчезнувшая у берегов Австралии в XVI веке.",
       "История связана с ранними плаваниями и возможными следами испанского присутствия в регионе.",
-      "Документальных подтверждений полной истории до сих пор нет."
+      "Документальных подтверждений полной истории до сих пор нет.",
+      "Некоторые исследователи находят артефакты, которые могут указывать на раннее европейское присутствие."
     ],
-    "image_prompt": "Old Spanish galleons disappearing into fog near rocky Australian coast, cinematic, mysterious, historical atmosphere",
+    "image_prompt": "Old Spanish galleons disappearing into fog near rocky Australian coast, 16th century naval expedition, dramatic lighting, cinematic, mysterious, historical atmosphere, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
     "topic": "Исчезновение Флосси Неджел",
     "facts": [
-      "9-летняя девочка пропала в 1969 году на глазах у сотен свидетелей.",
+      "9-летняя девочка пропала в 1969 году на глазах у сотен свидетелей в парке развлечений.",
       "Обстоятельства исчезновения остаются необъяснёнными.",
-      "Дело стало одной из известных неразгаданных историй пропажи людей."
+      "Дело стало одной из известных неразгаданных историй пропажи людей.",
+      "Никаких следов или улик не было найдено, что делает случай ещё более загадочным."
     ],
-    "image_prompt": "1960s amusement park crowd, empty space where a child disappeared, eerie lighting, cinematic, mysterious",
+    "image_prompt": "1960s amusement park crowd, empty space where a child disappeared, eerie lighting, cinematic, mysterious, atmospheric, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -44,49 +48,54 @@
     "facts": [
       "Легенда о роте, «поглощённой» туманом, получила широкую известность.",
       "Реальная версия связана с гибелью в бою, но легенда живёт отдельно.",
-      "История показывает, как военный эпизод превращается в мистическую загадку."
+      "История показывает, как военный эпизод превращается в мистическую загадку.",
+      "Свидетели описывали странный свет и звуки перед исчезновением солдат."
     ],
-    "image_prompt": "Military company disappearing into dense glowing fog, battlefield, cinematic, mysterious, dramatic",
+    "image_prompt": "Military company disappearing into dense glowing fog, battlefield, cinematic, mysterious, dramatic lighting, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
     "topic": "Исчезновение Оуэна Томаса",
     "facts": [
-      "Шахтёр из Уэльса пропал по дороге на работу в начале XX века.",
+      "Шахтёр из Уэльса пропал по дороге на работу в 1909 году.",
       "Следов и объяснений найдено не было.",
-      "Случай остаётся локальной исторической загадкой."
+      "Случай остаётся локальной исторической загадкой.",
+      "Его шляпа и инструменты были найдены нетронутыми на месте исчезновения."
     ],
-    "image_prompt": "Welsh miner walking alone on foggy road at dawn, early 1900s, cinematic, mysterious, atmospheric",
+    "image_prompt": "Welsh miner walking alone on foggy road at dawn, early 1900s, cinematic, mysterious, atmospheric, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
     "topic": "Эскадрилья 19",
     "facts": [
-      "Пять бомбардировщиков ВМС США пропали над Атлантикой в 1945 году.",
+      "Пять бомбардировщиков ВМС США пропали над Атлантикой 5 декабря 1945 года.",
       "Поисковый самолёт также исчез, что усилило загадку.",
-      "Причины катастрофы до сих пор обсуждаются."
+      "Причины катастрофы до сих пор обсуждаются.",
+      "Последние слова пилота: «Всё выглядит неправильно... даже океан выглядит иначе»."
     ],
-    "image_prompt": "Five WWII torpedo bombers flying into dark storm clouds over ocean, 1945, cinematic, mysterious, dramatic",
+    "image_prompt": "Five WWII torpedo bombers flying into dark storm clouds over ocean, 1945, cinematic, mysterious, dramatic lighting, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
     "topic": "Рейс 914",
     "facts": [
-      "Легенда о самолёте, якобы приземлившемся спустя десятилетия.",
+      "Легенда о самолёте, якобы приземлившемся спустя 37 лет после вылета.",
       "История считается выдумкой, но остаётся знаменитой.",
-      "Сюжет часто связывают с идеей временной аномалии."
+      "Сюжет часто связывают с идеей временной аномалии.",
+      "Пассажиры якобы не постарели ни на день за прошедшие десятилетия."
     ],
-    "image_prompt": "Vintage passenger plane landing at modern airport at night, glowing temporal distortion, cinematic, mysterious, sci-fi realism",
+    "image_prompt": "Vintage passenger plane landing at modern airport at night, glowing temporal distortion, cinematic, mysterious, sci-fi realism, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
     "topic": "Атлантида",
     "facts": [
-      "Исчезнувшая цивилизация из диалогов Платона.",
+      "Исчезнувшая цивилизация из диалогов Платона «Тимей» и «Критий».",
       "Историки не считают её доказанной реальной цивилизацией.",
-      "Поиски «следов Атлантиды» продолжаются в разных регионах мира."
+      "Поиски «следов Атлантиды» продолжаются в разных регионах мира.",
+      "Платон описывал остров с развитой культурой, исчезнувший за одну ночь."
     ],
-    "image_prompt": "Mystical ancient island civilization sinking into ocean, glowing temples, cinematic, mysterious, highly detailed",
+    "image_prompt": "Mystical ancient island civilization sinking into ocean, glowing temples, dramatic lighting, cinematic, mysterious, highly detailed, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -94,19 +103,21 @@
     "facts": [
       "Гипотетические затонувшие континенты из популярных теорий XIX–XX веков.",
       "Геология не подтверждает их существование.",
-      "Идеи остаются частью культуры и эзотерических традиций."
+      "Идеи остаются частью культуры и эзотерических традиций.",
+      "Теории о Лемурии повлияли на развитие оккультных учений и альтернативной истории."
     ],
-    "image_prompt": "Lost continent with ancient ruins submerged under ocean, glowing blue light, cinematic, mysterious, fantasy realism",
+    "image_prompt": "Lost continent with ancient ruins submerged under ocean, glowing blue light, cinematic, mysterious, fantasy realism, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
     "topic": "Падение минойской цивилизации",
     "facts": [
-      "Крит пережил извержение вулкана и серьёзные потрясения.",
+      "Крит пережил извержение вулкана Санторини около 1600 года до н.э.",
       "Что именно погубило минойскую культуру, остаётся предметом споров.",
-      "Версии включают климат, землетрясения, цунами и вторжения."
+      "Версии включают климат, землетрясения, цунами и вторжения.",
+      "Цивилизация была одной из самых развитых в древнем мире до своего падения."
     ],
-    "image_prompt": "Ancient Minoan palace destroyed by volcanic eruption, ash and fire, cinematic, dramatic, historical realism",
+    "image_prompt": "Ancient Minoan palace destroyed by volcanic eruption, ash and fire, cinematic, dramatic, historical realism, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -114,9 +125,10 @@
     "facts": [
       "Куда делись жители Мохенджо-Даро и Хараппы, до конца не ясно.",
       "Города отличались развитой планировкой и канализацией.",
-      "Причины упадка связывают с климатом, реками и миграциями."
+      "Причины упадка связывают с климатом, реками и миграциями.",
+      "Цивилизация существовала около 2500-1700 годов до н.э. и была современницей Египта."
     ],
-    "image_prompt": "Ancient Harappan city with advanced drainage, abandoned streets, dusty sunset, cinematic, mysterious, photorealistic",
+    "image_prompt": "Ancient Harappan city with advanced drainage, abandoned streets, dusty sunset, cinematic, mysterious, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -124,9 +136,10 @@
     "facts": [
       "Гигантские геоглифы видны в основном с высоты.",
       "Назначение рисунков остаётся предметом дискуссий.",
-      "Создание линий требовало сложной организации работ."
+      "Создание линий требовало сложной организации работ.",
+      "Некоторые фигуры изображают животных и растения, не характерные для региона."
     ],
-    "image_prompt": "Aerial view of Nazca lines, giant animal geoglyphs in desert, cinematic, mysterious, highly detailed",
+    "image_prompt": "Aerial view of Nazca lines, giant animal geoglyphs in desert, cinematic, mysterious, highly detailed, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -134,9 +147,10 @@
     "facts": [
       "Шедевр исчез в конце Второй мировой войны.",
       "Местонахождение подлинных панелей неизвестно.",
-      "Поиски и версии продолжаются десятилетиями."
+      "Поиски и версии продолжаются десятилетиями.",
+      "Комната была подарена Петру I прусским королём Фридрихом Вильгельмом I."
     ],
-    "image_prompt": "Ornate amber room panels glowing warm light, abandoned palace, WWII atmosphere, cinematic, mysterious",
+    "image_prompt": "Ornate amber room panels glowing warm light, abandoned palace, WWII atmosphere, cinematic, mysterious, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -144,29 +158,32 @@
     "facts": [
       "Легендарное сокровище, спрятанное перед приходом конкистадоров.",
       "Точное местонахождение клада не найдено.",
-      "История связана с мифами об Эльдорадо и подземных хранилищах."
+      "История связана с мифами об Эльдорадо и подземных хранилищах.",
+      "По легенде, инки спрятали золото в тайных пещерах Анд."
     ],
-    "image_prompt": "Ancient Inca gold artifacts hidden in secret cave, torchlight, cinematic, mysterious, highly detailed",
+    "image_prompt": "Ancient Inca gold artifacts hidden in secret cave, torchlight, cinematic, mysterious, highly detailed, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
     "topic": "Клад тамплиеров",
     "facts": [
-      "Куда исчезли архивы и богатства ордена после разгрома, неизвестно.",
+      "Куда исчезли архивы и богатства ордена после разгрома в 1307 году, неизвестно.",
       "Легенды связывают клад с замками, подземельями и тайными перевозками.",
-      "Документальных подтверждений полного клада нет."
+      "Документальных подтверждений полного клада нет.",
+      "Орден был обвинён в ереси и распущен папой Климентом V."
     ],
-    "image_prompt": "Medieval knights hiding chests of treasure in underground vault, candlelight, cinematic, mysterious",
+    "image_prompt": "Medieval knights hiding chests of treasure in underground vault, candlelight, cinematic, mysterious, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
     "topic": "Ковчег Завета",
     "facts": [
-      "Главная святыня иудеев, след которой теряется после разрушения Первого храма.",
+      "Главная святыня иудеев, след которой теряется после разрушения Первого храма в 586 году до н.э.",
       "Местонахождение Ковчега неизвестно.",
-      "Версии включают утрату, сокрытие и вывоз в другие регионы."
+      "Версии включают утрату, сокрытие и вывоз в другие регионы.",
+      "По преданию, Ковчег содержал скрижали с Десятью заповедями."
     ],
-    "image_prompt": "Ancient golden Ark of the Covenant in dark temple, glowing divine light, cinematic, mysterious, highly detailed",
+    "image_prompt": "Ancient golden Ark of the Covenant in dark temple, glowing divine light, cinematic, mysterious, highly detailed, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -174,29 +191,32 @@
     "facts": [
       "Как погибло величайшее собрание античности, точно не известно.",
       "Часть текстов могла уцелеть в копиях и других собраниях.",
-      "История библиотеки стала символом утраты знаний."
+      "История библиотеки стала символом утраты знаний.",
+      "Библиотека содержала до 700 000 свитков и была центром науки древнего мира."
     ],
-    "image_prompt": "Great Library of Alexandria burning, scrolls flying in embers, cinematic, dramatic, historical mystery",
+    "image_prompt": "Great Library of Alexandria burning, scrolls flying in embers, cinematic, dramatic, historical mystery, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
     "topic": "Менора Второго храма",
     "facts": [
-      "Судьба римского трофея после разграбления Иерусалима неясна.",
+      "Судьба римского трофея после разграбления Иерусалима в 70 году н.э. неясна.",
       "Менора упоминается в источниках, но её след теряется.",
-      "Поиски и версии продолжаются до сих пор."
+      "Поиски и версии продолжаются до сих пор.",
+      "Семисвечник был одним из главных символов иудаизма."
     ],
-    "image_prompt": "Ancient golden menorah carried through Roman triumph, dramatic lighting, cinematic, historical mystery",
+    "image_prompt": "Ancient golden menorah carried through Roman triumph, dramatic lighting, cinematic, historical mystery, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
     "topic": "Клад капитана Кидда",
     "facts": [
-      "Реальный пират оставил шифровки, обещающие сокровище.",
+      "Реальный пират Уильям Кидд оставил шифровки, обещающие сокровище.",
       "Клад так и не был найден в полном объёме.",
-      "История стала классикой пиратских легенд."
+      "История стала классикой пиратских легенд.",
+      "Кидд был казнён в 1701 году, но тайна клада осталась."
     ],
-    "image_prompt": "Old pirate treasure map and chest on sandy island, stormy sea, cinematic, mysterious, highly detailed",
+    "image_prompt": "Old pirate treasure map and chest on sandy island, stormy sea, cinematic, mysterious, highly detailed, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -204,9 +224,10 @@
     "facts": [
       "«Денежная яма» с загадочными сооружениями, куда якобы спрятан клад.",
       "Поиски ведутся столетиями и не дали однозначного результата.",
-      "Остров стал одной из самых известных кладоискательских загадок."
+      "Остров стал одной из самых известных кладоискательских загадок.",
+      "Система затопленных тоннелей защищает сокровища от искателей."
     ],
-    "image_prompt": "Mysterious money pit on Oak Island, wooden shafts and flood tunnels, cinematic, mysterious, atmospheric",
+    "image_prompt": "Mysterious money pit on Oak Island, wooden shafts and flood tunnels, cinematic, mysterious, atmospheric, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -214,19 +235,21 @@
     "facts": [
       "Письменность критян, у которой нет ключа.",
       "Тексты остаются нерасшифрованными.",
-      "Понимание языка минойцев могло бы изменить представления о древнем Крите."
+      "Понимание языка минойцев могло бы изменить представления о древнем Крите.",
+      "Письмо использовалось около 1800-1450 годов до н.э."
     ],
-    "image_prompt": "Ancient Minoan clay tablet with Linear A symbols, dramatic museum lighting, cinematic, mysterious",
+    "image_prompt": "Ancient Minoan clay tablet with Linear A symbols, dramatic museum lighting, cinematic, mysterious, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
     "topic": "Голубые камни Стоунхенджа",
     "facts": [
-      "Зачем их тащили за сотни километров, до конца не ясно.",
+      "Зачем их тащили за 250 км из Уэльса, до конца не ясно.",
       "Камни связаны с ранними этапами строительства Стоунхенджа.",
-      "Версии включают ритуальное и астрономическое значение."
+      "Версии включают ритуальное и астрономическое значение.",
+      "Каждый камень весит до 4 тонн и был доставлен без современных технологий."
     ],
-    "image_prompt": "Massive blue stones being transported across ancient landscape, Neolithic workers, cinematic, mysterious",
+    "image_prompt": "Massive blue stones being transported across ancient landscape, Neolithic workers, cinematic, mysterious, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -234,9 +257,10 @@
     "facts": [
       "Как перемещали многотонные моаи, до конца не доказано.",
       "Почему строители остановились, остаётся предметом споров.",
-      "Эксперименты показывают возможные способы транспортировки."
+      "Эксперименты показывают возможные способы транспортировки.",
+      "Некоторые статуи весят до 80 тонн и достигают 10 метров в высоту."
     ],
-    "image_prompt": "Easter Island moai statues under dramatic sky, ancient workers in distance, cinematic, mysterious",
+    "image_prompt": "Easter Island moai statues under dramatic sky, ancient workers in distance, cinematic, mysterious, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -244,9 +268,10 @@
     "facts": [
       "Надписи пока не поддаются полной расшифровке.",
       "Камень связан с древнетюркской письменной культурой.",
-      "Лингвисты продолжают уточнять чтение и смысл текста."
+      "Лингвисты продолжают уточнять чтение и смысл текста.",
+      "Камень датируется VI-VIII веками н.э."
     ],
-    "image_prompt": "Ancient Turkic runic stone in steppe, glowing inscriptions, cinematic, mysterious, historical realism",
+    "image_prompt": "Ancient Turkic runic stone in steppe, glowing inscriptions, cinematic, mysterious, historical realism, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -254,19 +279,21 @@
     "facts": [
       "Устройство, якобы показывавшее будущее, не оставило следов.",
       "История известна в основном из легенд и литературных источников.",
-      "Реальный облик и принцип работы прибора неизвестны."
+      "Реальный облик и принцип работы прибора неизвестны.",
+      "Легенда связана с алхимиком и магом доктором Фаустом."
     ],
-    "image_prompt": "Mysterious antique planetarium device glowing in dark study, celestial projections, cinematic, mysterious",
+    "image_prompt": "Mysterious antique planetarium device glowing in dark study, celestial projections, cinematic, mysterious, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
     "topic": "Человек в железной маске",
     "facts": [
-      "Узник, которого всю жизнь скрывали под маской.",
+      "Узник, которого всю жизнь скрывали под маской в XVII веке.",
       "Его личность до сих пор не установлена окончательно.",
-      "История стала символом придворных тайн и политических загадок."
+      "История стала символом придворных тайн и политических загадок.",
+      "Узник содержался в Бастилии и других тюрьмах Франции."
     ],
-    "image_prompt": "Prisoner in iron mask in dark Bastille cell, candlelight, cinematic, mysterious, dramatic",
+    "image_prompt": "Prisoner in iron mask in dark Bastille cell, candlelight, cinematic, mysterious, dramatic, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -274,9 +301,10 @@
     "facts": [
       "Картина исчезла вместе с владельцем в предвоенной Европе.",
       "Судьба произведения остаётся неясной.",
-      "История связана с миром искусства и военными перемещениями ценностей."
+      "История связана с миром искусства и военными перемещениями ценностей.",
+      "Портрет был создан в стиле ар-деко и считался шедевром."
     ],
-    "image_prompt": "Art deco portrait painting in abandoned 1930s salon, eerie light, cinematic, mysterious",
+    "image_prompt": "Art deco portrait painting in abandoned 1930s salon, eerie light, cinematic, mysterious, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -284,9 +312,10 @@
     "facts": [
       "Рукописи якобы вывезены из Зимнего дворца в 1917 году.",
       "Часть собрания могла быть утрачена или рассеяна.",
-      "Поиски и версии продолжаются в исторических исследованиях."
+      "Поиски и версии продолжаются в исторических исследованиях.",
+      "Библиотека содержала уникальные документы императорской семьи."
     ],
-    "image_prompt": "Old imperial library with scattered manuscripts, 1917 atmosphere, cinematic, mysterious, historical",
+    "image_prompt": "Old imperial library with scattered manuscripts, 1917 atmosphere, cinematic, mysterious, historical, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -294,9 +323,10 @@
     "facts": [
       "Судьба «секретных архивов» Пулковской обсерватории, потерянных в годы репрессий.",
       "Часть материалов могла быть уничтожена или скрыта.",
-      "История остаётся малоизученной."
+      "История остаётся малоизученной.",
+      "Обсерватория была одним из ведущих астрономических центров мира."
     ],
-    "image_prompt": "Old astronomical observatory archive in dim light, scattered papers, cinematic, mysterious, historical",
+    "image_prompt": "Old astronomical observatory archive in dim light, scattered papers, cinematic, mysterious, historical, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -304,9 +334,10 @@
     "facts": [
       "Споры о возрасте статуи продолжаются.",
       "Неясно, кому изначально принадлежало лицо Сфинкса.",
-      "Геология и египтология дают разные интерпретации следов эрозии."
+      "Геология и египтология дают разные интерпретации следов эрозии.",
+      "Сфинкс высечен из известняковой скалы около 2500 года до н.э."
     ],
-    "image_prompt": "Great Sphinx of Giza at sunset, mysterious shadows, cinematic, highly detailed, photorealistic",
+    "image_prompt": "Great Sphinx of Giza at sunset, mysterious shadows, cinematic, highly detailed, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -314,9 +345,10 @@
     "facts": [
       "Как «голубые камни» доставили за 250 км, остаётся вопросом.",
       "Назначение и астрономические линии комплекса обсуждаются.",
-      "Стоунхендж остаётся одним из самых известных мегалитов мира."
+      "Стоунхендж остаётся одним из самых известных мегалитов мира.",
+      "Комплекс построен около 3000-2000 годов до н.э."
     ],
-    "image_prompt": "Stonehenge under starry sky, glowing astronomical alignments, cinematic, mysterious, highly detailed",
+    "image_prompt": "Stonehenge under starry sky, glowing astronomical alignments, cinematic, mysterious, highly detailed, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -324,9 +356,10 @@
     "facts": [
       "Монументальный комплекс на высоте 3800 м с точной астрономической ориентацией.",
       "Строители и назначение комплекса изучены не полностью.",
-      "Каменные блоки и планировка впечатляют инженерной точностью."
+      "Каменные блоки и планировка впечатляют инженерной точностью.",
+      "Комплекс датируется 1500 годом до н.э."
     ],
-    "image_prompt": "Ancient Tiwanaku stone complex at high altitude, dramatic clouds, cinematic, mysterious, photorealistic",
+    "image_prompt": "Ancient Tiwanaku stone complex at high altitude, dramatic clouds, cinematic, mysterious, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -334,9 +367,10 @@
     "facts": [
       "Гранитные монолиты весом в десятки тонн привезены через горы.",
       "Способ транспортировки и установки до конца не доказан.",
-      "Кладка отличается высокой точностью подгонки."
+      "Кладка отличается высокой точностью подгонки.",
+      "Комплекс был крепостью инков и местом последней битвы с конкистадорами."
     ],
-    "image_prompt": "Massive Inca stone terraces at Ollantaytambo, mountain light, cinematic, mysterious, highly detailed",
+    "image_prompt": "Massive Inca stone terraces at Ollantaytambo, mountain light, cinematic, mysterious, highly detailed, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -344,9 +378,10 @@
     "facts": [
       "Храм возрастом около 12 000 лет.",
       "Комплекс «нарушает» представления о возможностях охотников-собирателей.",
-      "Назначение и социальная организация строителей обсуждаются."
+      "Назначение и социальная организация строителей обсуждаются.",
+      "Открытие изменило понимание развития человеческой цивилизации."
     ],
-    "image_prompt": "Ancient Gobekli Tepe megalithic pillars under dramatic sky, cinematic, mysterious, photorealistic",
+    "image_prompt": "Ancient Gobekli Tepe megalithic pillars under dramatic sky, cinematic, mysterious, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -354,9 +389,10 @@
     "facts": [
       "Город на отвесной вершине с сложной логистикой стройки.",
       "Системы дренажа и террасы остаются предметом изучения.",
-      "Назначение города и причины его оставления обсуждаются."
+      "Назначение города и причины его оставления обсуждаются.",
+      "Город был «потерян» для внешнего мира до 1911 года."
     ],
-    "image_prompt": "Machu Picchu on steep mountain ridge, mist and golden light, cinematic, mysterious, highly detailed",
+    "image_prompt": "Machu Picchu on steep mountain ridge, mist and golden light, cinematic, mysterious, highly detailed, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -364,9 +400,10 @@
     "facts": [
       "Пирамида Кукулькана даёт эффект «ползущей змеи» в дни равноденствия.",
       "Астрономическая точность сооружения впечатляет исследователей.",
-      "Город был важным центром майя."
+      "Город был важным центром майя.",
+      "Пирамида имеет 365 ступеней — по числу дней в году."
     ],
-    "image_prompt": "El Castillo pyramid at Chichen Itza during equinox, serpent shadow, cinematic, mysterious, highly detailed",
+    "image_prompt": "El Castillo pyramid at Chichen Itza during equinox, serpent shadow, cinematic, mysterious, highly detailed, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -374,9 +411,10 @@
     "facts": [
       "Рельеф на крышке саркофага Пакаля порождает бесконечные споры.",
       "Одни видят в нём мифологическую сцену, другие — иные трактовки.",
-      "Комплекс остаётся важнейшим памятником майя."
+      "Комплекс остаётся важнейшим памятником майя.",
+      "Город был столицей одного из крупнейших государств майя."
     ],
-    "image_prompt": "Ancient Maya sarcophagus lid in Palenque, intricate carvings, dramatic light, cinematic, mysterious",
+    "image_prompt": "Ancient Maya sarcophagus lid in Palenque, intricate carvings, dramatic light, cinematic, mysterious, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -384,9 +422,10 @@
     "facts": [
       "Монументальные храмы вырублены в скалах.",
       "Водоснабжение посреди пустыни было сложной инженерной задачей.",
-      "Город оставался скрытым от внешнего мира столетиями."
+      "Город оставался скрытым от внешнего мира столетиями.",
+      "Петра была столицей набатейского царства."
     ],
-    "image_prompt": "Petra treasury carved in rose rock, desert sunset, cinematic, mysterious, highly detailed",
+    "image_prompt": "Petra treasury carved in rose rock, desert sunset, cinematic, mysterious, highly detailed, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -394,9 +433,10 @@
     "facts": [
       "Каменный город без раствора.",
       "Строители и назначение долго были предметом идеологических споров.",
-      "Комплекс является важным памятником доколониальной Африки."
+      "Комплекс является важным памятником доколониальной Африки.",
+      "Город был столицей государства Мономотапа в XI-XV веках."
     ],
-    "image_prompt": "Great Zimbabwe stone walls under African sky, cinematic, mysterious, highly detailed",
+    "image_prompt": "Great Zimbabwe stone walls under African sky, cinematic, mysterious, highly detailed, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -404,9 +444,10 @@
     "facts": [
       "Тысячи камней выстроены линиями.",
       "Зачем и как их принесли, до конца не ясно.",
-      "Комплекс является крупнейшим собранием мегалитов в мире."
+      "Комплекс является крупнейшим собранием мегалитов в мире.",
+      "Некоторые камни достигают 4 метров в высоту."
     ],
-    "image_prompt": "Carnac standing stones aligned in rows at dawn, misty field, cinematic, mysterious, photorealistic",
+    "image_prompt": "Carnac standing stones aligned in rows at dawn, misty field, cinematic, mysterious, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -414,9 +455,10 @@
     "facts": [
       "Солнце в день зимнего солнцестояния освещает камеру с точностью до минут.",
       "Курган старше пирамид Египта.",
-      "Назначение и символика комплекса обсуждаются."
+      "Назначение и символика комплекса обсуждаются.",
+      "Комплекс построен около 3200 года до н.э."
     ],
-    "image_prompt": "Newgrange passage tomb with winter solstice sunlight entering, cinematic, mysterious, highly detailed",
+    "image_prompt": "Newgrange passage tomb with winter solstice sunlight entering, cinematic, mysterious, highly detailed, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -424,9 +466,10 @@
     "facts": [
       "Трёхэтажный подземный некрополь вырезан в известняке.",
       "Комплекс создан за тысячелетия до металла.",
-      "Назначение и последовательность строительства изучены не полностью."
+      "Назначение и последовательность строительства изучены не полностью.",
+      "Гипогей датируется 4000-2500 годами до н.э."
     ],
-    "image_prompt": "Underground Hal Saflieni hypogeum, carved chambers, eerie light, cinematic, mysterious, photorealistic",
+    "image_prompt": "Underground Hal Saflieni hypogeum, carved chambers, eerie light, cinematic, mysterious, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -434,9 +477,10 @@
     "facts": [
       "Древнейшие свободно стоящие постройки мира.",
       "Загадочные «ложи» и столы вызывают споры.",
-      "Комплексы Хаджар-Ким относятся к эпохе неолита."
+      "Комплексы Хаджар-Ким относятся к эпохе неолита.",
+      "Храмы построены около 3600-2500 годов до н.э."
     ],
-    "image_prompt": "Ancient Maltese megalithic temple, massive stones, golden light, cinematic, mysterious, highly detailed",
+    "image_prompt": "Ancient Maltese megalithic temple, massive stones, golden light, cinematic, mysterious, highly detailed, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -444,9 +488,10 @@
     "facts": [
       "Плита-перекрытие весит около 180 тонн.",
       "Она была поднята людьми неолита.",
-      "Технология перемещения и установки остаётся предметом экспериментов."
+      "Технология перемещения и установки остаётся предметом экспериментов.",
+      "Дольмен находится в Антекере, Испания."
     ],
-    "image_prompt": "Massive Dolmen of Menga stone chamber, Neolithic setting, dramatic light, cinematic, mysterious",
+    "image_prompt": "Massive Dolmen of Menga stone chamber, Neolithic setting, dramatic light, cinematic, mysterious, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -454,9 +499,10 @@
     "facts": [
       "Крупнейший каменный круг Европы.",
       "Комплекс почти забыт и лишь частично восстановлен.",
-      "Назначение и связь с другими мегалитами обсуждаются."
+      "Назначение и связь с другими мегалитами обсуждаются.",
+      "Круг имеет диаметр около 350 метров."
     ],
-    "image_prompt": "Avebury stone circle in misty English countryside, cinematic, mysterious, highly detailed",
+    "image_prompt": "Avebury stone circle in misty English countryside, cinematic, mysterious, highly detailed, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -464,9 +510,10 @@
     "facts": [
       "«Каменный храм» на острове Льюис с непонятной символикой.",
       "Комплекс имеет астрономическую привязку.",
-      "Назначение и культурный контекст изучены не полностью."
+      "Назначение и культурный контекст изучены не полностью.",
+      "Камни расположены в форме креста."
     ],
-    "image_prompt": "Callanish standing stones under aurora sky, cinematic, mysterious, highly detailed",
+    "image_prompt": "Callanish standing stones under aurora sky, cinematic, mysterious, highly detailed, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -474,9 +521,10 @@
     "facts": [
       "Гора с симметричными «гранями» вызывает споры.",
       "Одни считают её рукотворной пирамидой, другие — чистой геологией.",
-      "Кайлас остаётся священной горой для нескольких религий."
+      "Кайлас остаётся священной горой для нескольких религий.",
+      "Гора находится в Тибете и имеет высоту 6638 метров."
     ],
-    "image_prompt": "Mount Kailash with symmetrical faces, dramatic Himalayan sky, cinematic, mysterious, photorealistic",
+    "image_prompt": "Mount Kailash with symmetrical faces, dramatic Himalayan sky, cinematic, mysterious, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -484,9 +532,10 @@
     "facts": [
       "Десятки правительственных курганов-пирамид долго скрывались.",
       "Комплексы изучены слабо по сравнению с египетскими пирамидами.",
-      "Часть объектов связана с императорскими захоронениями."
+      "Часть объектов связана с императорскими захоронениями.",
+      "Пирамиды датируются династией Цинь (221-206 годы до н.э.)."
     ],
-    "image_prompt": "Ancient Chinese pyramid mounds in misty landscape, cinematic, mysterious, highly detailed",
+    "image_prompt": "Ancient Chinese pyramid mounds in misty landscape, cinematic, mysterious, highly detailed, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -494,9 +543,10 @@
     "facts": [
       "Идеальная городская планировка и канализация бронзового века.",
       "Единый известный правитель города не установлен.",
-      "Причины упадка цивилизации обсуждаются."
+      "Причины упадка цивилизации обсуждаются.",
+      "Город существовал около 2500-1700 годов до н.э."
     ],
-    "image_prompt": "Ancient Mohenjo-daro streets and drainage, dusty sunset, cinematic, mysterious, photorealistic",
+    "image_prompt": "Ancient Mohenjo-daro streets and drainage, dusty sunset, cinematic, mysterious, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -504,9 +554,10 @@
     "facts": [
       "Десятки крутоходных пирамид Судана.",
       "Связь с Египтом до сих пор уточняется.",
-      "Комплекс отражает культуру Куша."
+      "Комплекс отражает культуру Куша.",
+      "Пирамиды строились около 800 года до н.э. — 350 года н.э."
     ],
-    "image_prompt": "Meroe pyramids in Sudanese desert, golden light, cinematic, mysterious, highly detailed",
+    "image_prompt": "Meroe pyramids in Sudanese desert, golden light, cinematic, mysterious, highly detailed, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -514,9 +565,10 @@
     "facts": [
       "Ступенчатый храм с прочной кладкой.",
       "Техника строительства дожила до наших дней почти без разрушений.",
-      "Зиккурат был важным религиозным центром Месопотамии."
+      "Зиккурат был важным религиозным центром Месопотамии.",
+      "Храм построен около 2100 года до н.э."
     ],
-    "image_prompt": "Ancient Ziggurat of Ur under dramatic sky, cinematic, mysterious, photorealistic",
+    "image_prompt": "Ancient Ziggurat of Ur under dramatic sky, cinematic, mysterious, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -524,9 +576,10 @@
     "facts": [
       "Курган царя Антиоха с гигантскими каменными головами богов.",
       "Загадочная гробница до сих пор не найдена.",
-      "Комплекс сочетает разные культурные традиции."
+      "Комплекс сочетает разные культурные традиции.",
+      "Головы статуй достигают 2 метров в высоту."
     ],
-    "image_prompt": "Mount Nemrut giant stone god heads at sunrise, cinematic, mysterious, highly detailed",
+    "image_prompt": "Mount Nemrut giant stone god heads at sunrise, cinematic, mysterious, highly detailed, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -534,9 +587,10 @@
     "facts": [
       "Дворец-крепость на отвесной скале.",
       "Сложная гидротехника V века впечатляет инженеров.",
-      "Назначение и история комплекса изучены не полностью."
+      "Назначение и история комплекса изучены не полностью.",
+      "Сигирия была столицей царя Кашьяпы."
     ],
-    "image_prompt": "Sigiriya rock fortress in Sri Lanka, ancient palace on top, cinematic, mysterious, photorealistic",
+    "image_prompt": "Sigiriya rock fortress in Sri Lanka, ancient palace on top, cinematic, mysterious, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -544,9 +598,10 @@
     "facts": [
       "Огромный храм высечен из единой скалы сверху вниз.",
       "Строительство велось без единого шва.",
-      "Комплекс в Эллоре считается шедевром древней инженерии."
+      "Комплекс в Эллоре считается шедевром древней инженерии.",
+      "Храм построен в VIII веке н.э."
     ],
-    "image_prompt": "Kailasanatha temple carved from single rock, Ellora, dramatic light, cinematic, mysterious",
+    "image_prompt": "Kailasanatha temple carved from single rock, Ellora, dramatic light, cinematic, mysterious, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -554,9 +609,10 @@
     "facts": [
       "Укреплённое поселение бронзового века с радиальной планировкой.",
       "Планировка напоминает модель мироздания.",
-      "Назначение и культурный контекст обсуждаются."
+      "Назначение и культурный контекст обсуждаются.",
+      "Поселение датируется XVII-XVI веками до н.э."
     ],
-    "image_prompt": "Ancient Arkaim circular settlement from above, bronze age, cinematic, mysterious, highly detailed",
+    "image_prompt": "Ancient Arkaim circular settlement from above, bronze age, cinematic, mysterious, highly detailed, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -564,9 +620,10 @@
     "facts": [
       "Тысячи столбов весом до 7 тонн.",
       "Назначение связано с погребальными практиками.",
-      "Происхождение и организация строителей изучены не полностью."
+      "Происхождение и организация строителей изучены не полностью.",
+      "Комплекс включает более 1000 камней."
     ],
-    "image_prompt": "Senegambian stone circles at sunset, mysterious atmosphere, cinematic, highly detailed",
+    "image_prompt": "Senegambian stone circles at sunset, mysterious atmosphere, cinematic, highly detailed, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -574,9 +631,10 @@
     "facts": [
       "Крупнейший город из адобной глины.",
       "Как гигантские стены пережили климат, до конца не ясно.",
-      "Чан-Чан был столицей государства Чиму."
+      "Чан-Чан был столицей государства Чиму.",
+      "Город существовал около 850-1470 годов н.э."
     ],
-    "image_prompt": "Ancient Chan Chan adobe city walls, desert coast, cinematic, mysterious, photorealistic",
+    "image_prompt": "Ancient Chan Chan adobe city walls, desert coast, cinematic, mysterious, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
@@ -584,19 +642,21 @@
     "facts": [
       "«Пирамидальный» холм в Индонезии.",
       "Вокруг его возраста разворачиваются громкие научные споры.",
-      "Часть исследователей считает объект древним сооружением, другие — природной формацией."
+      "Часть исследователей считает объект древним сооружением, другие — природной формацией.",
+      "Некоторые датировки указывают на возраст до 20 000 лет."
     ],
-    "image_prompt": "Gunung Padang megalithic hill site in Indonesia, misty jungle, cinematic, mysterious, highly detailed",
+    "image_prompt": "Gunung Padang megalithic hill site in Indonesia, misty jungle, cinematic, mysterious, highly detailed, photorealistic, 8k",
     "platforms": ["tg", "max"]
   },
   {
     "topic": "Перевал Дятлова",
     "facts": [
-      "Гибель девяти опытных туристов с странными травмами.",
+      "Гибель девяти опытных туристов со странными травмами в 1959 году.",
       "Люди ушли из палатки в −30 °C.",
-      "Официальные версии менялись десятилетиями, единого ответа нет."
+      "Официальные версии менялись десятилетиями, единого ответа нет.",
+      "Некоторые тела были найдены без глаз и языка."
     ],
-    "image_prompt": "Abandoned tent on snowy Dyatlov Pass at night, eerie light, cinematic, mysterious, dramatic",
+    "image_prompt": "Abandoned tent on snowy Dyatlov Pass at night, eerie light, cinematic, mysterious, dramatic, photorealistic, 8k",
     "platforms": ["tg", "max"]
   }
 ]
