@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-gnesyuk-max-agent v1.0
-Агент для публикации РАЗВЁРНУТЫХ лонгридов (2100-2300 симв.) ТОЛЬКО в MAX.
-Использует те же книги и тайны, что и основной агент, но со своим blacklist.
+gnesyuk-max-agent v2.0
+Агент для публикации РАЗВЁРНУТЫХ лонгридов (2100-2300 симв.) в MAX.
+Чередует темы: нечётные дни - книги (max_books_topics.json), чётные - тайны (mysteries.json).
 """
-import os, json, datetime, requests, time, io, base64, uuid, urllib3, re, random, subprocess
-from PIL import Image, ImageEnhance, ImageStat
+import os, json, datetime, requests, time, io, base64, uuid, urllib3, re, random
+from PIL import Image, ImageEnhance
 urllib3.disable_warnings()
 
 # ============================================================
@@ -20,8 +20,8 @@ MAX_TOKEN = os.environ.get("MAX_BOT_TOKEN", "").strip()
 MAX_CHAT = os.environ.get("MAX_CHAT_ID", "").strip()
 POLLINATIONS_API = "https://image.pollinations.ai/prompt/"
 
-BOOK_TAGS = "#ПавелГнесюк #книги #авторскийблог #писатель"
-MYSTERY_TAGS = "#ПавелГнесюк #тайны #история #загадки"
+BOOK_TAGS = "#ПавелГнесюк #книги #авторскийблог #писатель #лонгрид"
+MYSTERY_TAGS = "#ПавелГнесюк #тайны #история #загадки #лонгрид"
 RU = "\n\nВАЖНО: Пиши ТОЛЬКО на русском языке."
 
 GROQ_MODELS = ["meta-llama/llama-4-scout-17b-16e-instruct", "llama-3.1-8b-instant"]
@@ -37,10 +37,10 @@ META_BAN = (
     "НЕ используй восклицательные знаки в первой строке. "
     "НЕ делай коротких строк-подзаголовков без продолжения. "
     "Пиши сплошным связным текстом с абзацами. "
-    "Первая строка должна быть КОНКРЕТНОЙ СЦЕНОЙ или ДЕЙСТВИЕМ героя. "
+    "Первая строка должна быть КОНКРЕТНОЙ СЦЕНОЙ или ДЕЙСТВИЕМ. "
 )
 
-# Файлы кэша — ОТДЕЛЬНЫЕ от основного агента!
+# Файлы кэша
 MAX_FAILED = "max_failed.json"
 MAX_USED = "max_used.json"
 MAX_HISTORY = "max_history.json"
@@ -48,7 +48,7 @@ MAX_HISTORY = "max_history.json"
 def log(msg):
     print(msg, flush=True)
 
-log("Версия ℹ️ gnesyuk-max-agent v1.0 (лонгриды 2100-2300 симв. только для MAX)")
+log("Версия ℹ️ gnesyuk-max-agent v2.0 (чередование книг/тайн по дням месяца)")
 
 # ============================================================
 # ИИ-ТЕКСТ (GigaChat → Groq)
@@ -74,13 +74,12 @@ def get_gigachat_token():
         if r.status_code == 200 and "access_token" in r.json():
             _G_TOKEN = r.json()["access_token"]
             _G_EXP = time.time() + 1700
-            log("✅ GigaChat token acquired")
             return _G_TOKEN
     except Exception as e:
         log(f"⚠️ GigaChat auth: {e}")
     return None
 
-def ai_text(prompt, minlen=2000, rescue_min=1500):
+def ai_text(prompt, minlen=2000, rescue_min=1800):
     """Генерация текста: GigaChat → Groq."""
     best_res = ""
     def take(res, label):
@@ -152,7 +151,6 @@ def _fix_bad_opening(text):
     while lines:
         first = lines[0].strip().lower()
         if any(bad in first for bad in bad_openings):
-            log(f"🩹 Cut bad opening: {lines[0][:50]}...")
             lines.pop(0)
         else:
             break
@@ -165,50 +163,9 @@ def clean_txt(t):
     return t
 
 # ============================================================
-# ГЕНЕРАЦИЯ ЛОНГРИДОВ (2100-2300 символов)
-# ============================================================
-def build_max_book_post(book, day):
-    """Развёрнутый пост о книге специально для MAX."""
-    t, a, s = book["title"], book["about"], book.get("series", "")
-    prompt = (
-        f"Напиши РАЗВЁРНУТЫЙ пост-лонгрид для платформы MAX о романе Павла Гнесюка «{t}»"
-        f"{f' (серия «{s}»)' if s else ''}. Сюжет: {a}. "
-        f"Требования: 1. ТОЛЬКО русский язык. "
-        f"2. Объем СТРОГО 2100-2300 символов (длинный формат). "
-        f"3. Структура: Цепляющий заголовок (1 строка), подробный синопсис без спойлеров финала, "
-        f"анализ атмосферы или мотивации героев (2-3 абзаца), стилизованная мысль или цитата, "
-        f"призыв к обсуждению в комментариях. "
-        f"4. Живой, литературный стиль, без канцеляризмов и штампов. "
-        f"5. В самом конце добавь хештеги: {BOOK_TAGS}"
-        + META_BAN
-    )
-    txt = ai_text(prompt, minlen=2000, rescue_min=1800)
-    return clean_txt(txt) if txt else f"РОМАН «{t.upper()}»: {a}"
-
-def build_max_mystery_post(mystery, day):
-    """Развёрнутый пост о тайне специально для MAX."""
-    topic = mystery["topic"]
-    facts = "\n".join([f"- {f}" for f in mystery["facts"]])
-    prompt = (
-        f"Напиши РАЗВЁРНУТЫЙ пост-лонгрид для платформы MAX на тему: {topic}. "
-        f"Используй эти факты как основу: {facts}. "
-        f"Требования: 1. ТОЛЬКО русский язык. "
-        f"2. Объем СТРОГО 2100-2300 символов (длинный формат). "
-        f"3. Структура: Интригующий заголовок (1 строка), исторический контекст, "
-        f"подробный разбор фактов и противоречий (3-4 абзаца), "
-        f"мнение автора или риторический вопрос к читателю. "
-        f"4. Живой, детективный стиль, без нейрослопа. "
-        f"5. В самом конце добавь хештеги: {MYSTERY_TAGS}"
-        + META_BAN
-    )
-    txt = ai_text(prompt, minlen=2000, rescue_min=1800)
-    return clean_txt(txt) if txt else f"Загадка: {topic}\n\n{mystery['facts'][0]}"
-
-# ============================================================
-# КАРТИНКИ (OpenAI Flare low + Pollinations fallback)
+# КАРТИНКИ
 # ============================================================
 def download_image(scene_text, seed):
-    """OpenAI Flare (low) → Pollinations с обрезкой логотипа."""
     clean_img = "".join(c for c in scene_text if c.isalnum() or c.isspace() or c in ".,-")[:220].strip()
     base_prompt = f"Cinematic photography, highly detailed, 8k resolution, dramatic lighting, photorealistic. Scene: {clean_img}. No text, no watermark."
     
@@ -219,67 +176,36 @@ def download_image(scene_text, seed):
         try:
             from openai import OpenAI
             client = OpenAI(api_key=OPENAI_KEY)
-            models_to_try = ["gpt-image-2.5-flare", "chatgpt-image-latest", "gpt-image-2"]
-            for model_name in models_to_try:
-                log(f"🎨 [OpenAI] Пробую '{model_name}' (quality=low)...")
+            for model_name in ["gpt-image-2.5-flare", "chatgpt-image-latest", "gpt-image-2"]:
                 try:
-                    response = client.images.generate(
-                        model=model_name, prompt=base_prompt, n=1,
-                        size="1024x1024", quality="low")
+                    response = client.images.generate(model=model_name, prompt=base_prompt, n=1, size="1024x1024", quality="low")
                     if hasattr(response.data[0], 'url') and response.data[0].url:
                         r = requests.get(response.data[0].url, timeout=60)
                         if r.status_code == 200 and len(r.content) > 10000:
-                            img_bytes = r.content
-                            source = "openai"
-                            log(f"🏆 УСПЕХ: OpenAI ({model_name})!")
-                            break
+                            img_bytes = r.content; source = "openai"; break
                     elif hasattr(response.data[0], 'b64_json') and response.data[0].b64_json:
-                        img_bytes = base64.b64decode(response.data[0].b64_json)
-                        source = "openai"
-                        log(f"🏆 УСПЕХ: OpenAI ({model_name}) via Base64!")
-                        break
+                        img_bytes = base64.b64decode(response.data[0].b64_json); source = "openai"; break
                 except Exception as e:
                     err = str(e).lower()
-                    log(f"❌ OpenAI {model_name}: {str(e)[:100]}")
-                    if "permission" in err or "rate_limit" in err or "quota" in err:
-                        log("💸 Лимиты OpenAI — прекращаю.")
-                        break
-        except ImportError:
-            log("⚠️ openai не установлен.")
-        except Exception as e:
-            log(f"🔥 OpenAI client: {e}")
+                    if "permission" in err or "rate_limit" in err or "quota" in err: break
+        except Exception: pass
 
     if not img_bytes:
-        log("🔄 Fallback: Pollinations (Flux)...")
-        silhouette_boost = ", silhouette from behind, shadow figure, back view only, mysterious atmosphere, foggy background, depth of field, bokeh, professional color grading, vibrant colors"
-        anti_artifacts = "face, eyes, mouth, nose, ears, hair details, cartoon, anime, painting, drawing, sketch, illustration, abstract, surreal, distorted face, extra limbs, blurry, low quality, ugly, deformed"
+        silhouette_boost = ", silhouette from behind, shadow figure, back view only, mysterious atmosphere, foggy background"
+        anti_artifacts = "face, eyes, mouth, cartoon, anime, painting, text, watermark, logo, distorted"
         final_prompt = base_prompt + silhouette_boost
         for attempt in range(2):
-            current_seed = seed + attempt * 500
-            url = f"{POLLINATIONS_API}{requests.utils.quote(final_prompt)}?nologo=true&seed={current_seed}&model=flux&width=768&height=768&negative_prompt={requests.utils.quote(anti_artifacts)}"
+            url = f"{POLLINATIONS_API}{requests.utils.quote(final_prompt)}?nologo=true&seed={seed + attempt * 500}&model=flux&width=768&height=768&negative_prompt={requests.utils.quote(anti_artifacts)}"
             try:
                 r = requests.get(url, timeout=300)
                 if r.status_code == 200 and len(r.content) > 10000:
-                    try:
-                        im_check = Image.open(io.BytesIO(r.content)).convert("L")
-                        avg = sum(im_check.getdata()) / (im_check.width * im_check.height)
-                        if avg < 30: continue
-                    except: pass
-                    img_bytes = r.content
-                    source = "pollinations"
-                    log(f"✅ Pollinations успешен! (Попытка {attempt+1})")
-                    break
-            except Exception as e:
-                log(f"⚠️ Pollinations: {e}")
+                    img_bytes = r.content; source = "pollinations"; break
+            except Exception: pass
             time.sleep(2)
 
-    if not img_bytes:
-        log("❌ ВСЕ ПОПЫТКИ ГЕНЕРАЦИИ ПРОВАЛИЛИСЬ")
-        return None
+    if not img_bytes: return None
 
-    # Обрезаем логотип Pollinations
     if source == "pollinations":
-        log("✂️ Обрезаю логотип pollinations.ai...")
         try:
             im = Image.open(io.BytesIO(img_bytes))
             w, h = im.size
@@ -287,9 +213,7 @@ def download_image(scene_text, seed):
             buf = io.BytesIO()
             im.save(buf, format="JPEG", quality=90)
             img_bytes = buf.getvalue()
-            log("✅ Логотип удалён.")
-        except Exception as e:
-            log(f"⚠️ Обрезка: {e}")
+        except Exception: pass
 
     return img_bytes
 
@@ -299,28 +223,11 @@ def convert_to_jpeg(img_bytes):
         im = Image.open(io.BytesIO(img_bytes)).convert("RGB")
         im.thumbnail((800, 800), Image.Resampling.LANCZOS)
         im = ImageEnhance.Contrast(im).enhance(1.1)
-        im = ImageEnhance.Sharpness(im).enhance(1.3)
         buf = io.BytesIO()
-        im.save(buf, format="JPEG", quality=90, optimize=True, progressive=True)
-        data = buf.getvalue()
-        log(f"🖼 Final: {im.size[0]}x{im.size[1]}, {len(data)//1024} KB")
-        return data
-    except Exception as e:
-        log(f"⚠️ JPEG: {e}")
+        im.save(buf, format="JPEG", quality=90, optimize=True)
+        return buf.getvalue()
+    except Exception:
         return img_bytes
-
-def commit_image(img_file):
-    try:
-        subprocess.run(["git", "config", "user.name", "github-actions[bot]"], check=True, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "github-actions[bot]@users.noreply.github.com"], check=True, capture_output=True)
-        subprocess.run(["git", "add", img_file], check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", f"chore: add max image {os.path.basename(img_file)} [skip ci]"], check=True, capture_output=True)
-        subprocess.run(["git", "push"], check=True, capture_output=True)
-        log(f"✅ Image {img_file} committed")
-        return True
-    except Exception as e:
-        log(f"⚠️ Image commit: {e}")
-        return False
 
 # ============================================================
 # ПУБЛИКАЦИЯ В MAX
@@ -332,18 +239,19 @@ def max_post(img_bytes, text):
     chat_val = int(MAX_CHAT) if MAX_CHAT.lstrip("-").isdigit() else MAX_CHAT
     bases = ["https://platform-api2.max.ru", "https://platform-api.max.ru", "https://botapi.max.ru"]
     headers_list = [{"Authorization": f"Bearer {MAX_TOKEN}"}, {"Authorization": MAX_TOKEN}]
+    
     for base in bases:
         for hdr in headers_list:
             try:
-                up = requests.post(f"{base}/uploads", headers=hdr,
-                    params={"type": "image", "chat_id": chat_val}, timeout=60, verify=False).json()
+                up = requests.post(f"{base}/uploads", headers=hdr, params={"type": "image", "chat_id": chat_val}, timeout=60, verify=False).json()
                 up_url = up.get("url") if isinstance(up, dict) else None
                 if not up_url: continue
+                
                 if img_bytes:
-                    ru = requests.post(up_url, files={"file": ("cover.jpg", img_bytes, "image/jpeg")},
-                        timeout=120, verify=False).json()
+                    ru = requests.post(up_url, files={"file": ("cover.jpg", img_bytes, "image/jpeg")}, timeout=120, verify=False).json()
                 else:
                     ru = {"photos": {"0": {"token": "no_image"}}}
+                
                 tok = None
                 if isinstance(ru, dict):
                     ph = ru.get("photos") or {}
@@ -351,22 +259,23 @@ def max_post(img_bytes, text):
                         for v in ph.values():
                             if isinstance(v, dict) and v.get("token"):
                                 tok = v["token"]; break
-                    tok = tok or ru.get("token") or ru.get("file")
+                    tok = tok or ru.get("token")
+                
                 if not tok: continue
+                
                 payload = {"text": text[:8000]}
                 if tok != "no_image":
                     payload["attachments"] = [{"type": "image", "payload": {"token": tok}}]
-                r = requests.post(f"{base}/messages", headers=hdr,
-                    params={"chat_id": chat_val}, json=payload, timeout=60, verify=False).json()
+                
+                r = requests.post(f"{base}/messages", headers=hdr, params={"chat_id": chat_val}, json=payload, timeout=60, verify=False).json()
                 if isinstance(r, dict) and (r.get("success") is True or isinstance(r.get("message"), dict)):
                     log(f"✅ MAX: Пост отправлен ({len(text)} симв.)")
                     return True
-            except Exception:
-                continue
+            except Exception: continue
     return False
 
 # ============================================================
-# BLACKLIST (отдельный от основного агента)
+# УТИЛИТЫ И КЭШ
 # ============================================================
 def load_json(path, default):
     try:
@@ -381,80 +290,98 @@ def save_json(path, data):
 # ГЛАВНЫЙ ЦИКЛ
 # ============================================================
 def main():
-    day = datetime.date.today().toordinal()
-    log(f"📅 День {day} — генерация лонгрида для MAX")
-
-    # Случайный выбор: книги или тайны (70% тайн, как в основном агенте)
-    is_mystery = random.random() < 0.7
-    mystery_data, book_data = None, None
-
-    if is_mystery and os.path.exists("mysteries.json"):
-        try:
-            mysteries = json.load(open("mysteries.json", encoding="utf-8"))
-            # Фильтр: берём только неиспользованные
-            used = set(load_json(MAX_USED, []))
-            pool = [m for m in mysteries if m["topic"] not in used]
-            if not pool:
-                log("⚠️ Все тайны использованы — сброс blacklist")
-                pool = mysteries
-                save_json(MAX_USED, [])
-            mystery_data = random.choice(pool)
-            log(f"🔮 Mystery: {mystery_data['topic']}")
-        except Exception as e:
-            log(f"⚠️ mysteries.json: {e}")
-            is_mystery = False
-
-    if not is_mystery:
-        try:
-            books = json.load(open("books.json", encoding="utf-8"))["books"]
-            used = set(load_json(MAX_USED, []))
-            pool = [b for b in books if b["title"] not in used]
-            if not pool:
-                log("⚠️ Все книги использованы — сброс")
-                pool = books
-                save_json(MAX_USED, [])
-            book_data = random.choice(pool)
-            log(f"📚 Book: «{book_data['title']}»")
-        except Exception as e:
-            log(f"❌ books.json: {e}")
-            raise SystemExit(1)
-
-    # Генерация лонгрида
-    if is_mystery:
-        post = build_max_mystery_post(mystery_data, day)
-        img_prompt = mystery_data.get("image_prompt", f"Mysterious ancient artifact, {mystery_data['topic']}")
-        topic_key = mystery_data["topic"]
+    day = datetime.date.today().day
+    
+    # 1. ОПРЕДЕЛЕНИЕ ИСТОЧНИКА ПО ДНЮ МЕСЯЦА
+    if day % 2 != 0:
+        log(f"📅 {day}-е число (нечётное): генерирую лонгрид по КНИГАМ")
+        topics_file = "max_books_topics.json"
     else:
-        post = build_max_book_post(book_data, day)
-        img_prompt = post[:150]
-        topic_key = book_data["title"]
+        log(f"📅 {day}-е число (чётное): генерирую лонгрид по ТАЙНАМ")
+        topics_file = "mysteries.json"
 
-    log(f"📝 Пост: {len(post)} симв.")
+    # 2. ЗАГРУЗКА ТЕМ
+    topics = load_json(topics_file, [])
+    if not topics:
+        log(f"❌ Файл {topics_file} пуст или не найден!")
+        raise SystemExit(1)
+    log(f"✅ Загружено тем из {topics_file}: {len(topics)}")
 
-    # Картинка
-    img_bytes = None
+    # 3. ВЫБОР СЛУЧАЙНОЙ НЕИСПОЛЬЗОВАННОЙ ТЕМЫ
+    used = set(load_json(MAX_USED, []))
+    pool = [t for t in topics if t.get("topic", t.get("title", "")) not in used]
+    
+    if not pool:
+        log(f"⚠️ Все темы в {topics_file} использованы — сброс blacklist")
+        pool = topics
+        save_json(MAX_USED, []) 
+
+    selected_topic = random.choice(pool)
+    topic_key = selected_topic.get("topic", selected_topic.get("title", "Unknown"))
+    log(f"🎯 Выбрана тема: {topic_key}")
+
+    # 4. ПОДГОТОВКА ПРОМПТА И КАРТИНКИ
+    img_prompt = selected_topic.get("image_prompt", f"Mysterious scene, {topic_key}")
+    
+    if topics_file == "max_books_topics.json":
+        # Для книг берём готовый, идеально выверенный промпт из JSON
+        prompt = selected_topic["ai_prompt"]
+    else:
+        # Для тайн генерируем промпт на лету, сохраняя строгие рамки длины и стиля
+        facts = selected_topic.get("facts", [])
+        facts_str = "\n".join([f"- {f}" for f in facts])
+        prompt = (
+            f"Напиши РАЗВЁРНУТЫЙ пост-лонгрид (СТРОГО 2100-2300 символов) для платформы MAX. "
+            f"Тема: {selected_topic['topic']}. "
+            f"Используй эти факты как основу: {facts_str}. "
+            f"Требования: 1. ТОЛЬКО русский язык. "
+            f"2. Объем СТРОГО 2100-2300 символов. "
+            f"3. Структура: Интригующий заголовок, исторический контекст, подробный разбор фактов, "
+            f"риторический вопрос к читателю. "
+            f"4. Живой, детективный стиль, без нейрослопа и штампов. "
+            f"5. В самом конце добавь хештеги: {MYSTERY_TAGS}"
+            + META_BAN
+        )
+
+    # 5. ГЕНЕРАЦИЯ ТЕКСТА
+    log("📝 Генерация текста...")
+    post = ai_text(prompt, minlen=2000, rescue_min=1800)
+    if not post:
+        log("❌ ИИ не смог сгенерировать текст нужной длины.")
+        raise SystemExit(1)
+    
+    post = clean_txt(post)
+    log(f"📝 Итоговый пост: {len(post)} симв.")
+
+    # 6. ГЕНЕРАЦИЯ КАРТИНКИ
+    log("🎨 Генерация картинки...")
     run_no = int(os.environ.get("GITHUB_RUN_NUMBER", "0"))
-    raw = download_image(img_prompt, day + 5000000 + (run_no % 100))
-    if raw:
-        img_bytes = convert_to_jpeg(raw)
-        if img_bytes:
-            os.makedirs("img_max", exist_ok=True)
-            img_file = f"img_max/max_{day}.jpg"
-            with open(img_file, "wb") as f: f.write(img_bytes)
-            commit_image(img_file)
+    raw_img = download_image(img_prompt, day + 5000000 + (run_no % 100))
+    img_bytes = convert_to_jpeg(raw_img) if raw_img else None
+    
+    if img_bytes:
+        os.makedirs("img_max", exist_ok=True)
+        img_file = f"img_max/max_{day}.jpg"
+        with open(img_file, "wb") as f: f.write(img_bytes)
+        log(f"🖼 Картинка сохранена: {img_file}")
 
-    # Публикация в MAX
+    # 7. ПУБЛИКАЦИЯ
     ok = max_post(img_bytes, post)
 
-    # Обновляем blacklist
+    # 8. ОБНОВЛЕНИЕ КЭША
     used_list = load_json(MAX_USED, [])
     if topic_key not in used_list:
         used_list.append(topic_key)
     save_json(MAX_USED, used_list[-500:])
 
     history = load_json(MAX_HISTORY, [])
-    history.append({"date": datetime.date.today().isoformat(), "topic": topic_key,
-                    "kind": "mystery" if is_mystery else "book", "len": len(post)})
+    history.append({
+        "date": datetime.date.today().isoformat(), 
+        "day_parity": "odd" if day % 2 != 0 else "even",
+        "source_file": topics_file,
+        "topic": topic_key, 
+        "len": len(post)
+    })
     save_json(MAX_HISTORY, history[-200:])
 
     log("=" * 50)
