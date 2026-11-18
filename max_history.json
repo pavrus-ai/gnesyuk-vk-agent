@@ -5,5 +5,12 @@
   "source_file": "mysteries.json",
   "topic": "Янтарная комната",
   "len": 2064
+ },
+ {
+  "date": "2026-11-18",
+  "day_parity": "even",
+  "source_file": "mysteries.json",
+  "topic": "Библиотека Александрии",
+  "len": 2540
  }
 ]
