@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-gnesyuk-max-agent v2.0
+gnesyuk-max-agent v2.1
 Агент для публикации РАЗВЁРНУТЫХ лонгридов (2100-2300 симв.) в MAX.
 Чередует темы: нечётные дни - книги (max_books_topics.json), чётные - тайны (mysteries.json).
+Автоматически формирует идеальный подвал поста с хештегами и ссылкой на ЛитРес.
 """
 import os, json, datetime, requests, time, io, base64, uuid, urllib3, re, random
 from PIL import Image, ImageEnhance
@@ -20,8 +21,8 @@ MAX_TOKEN = os.environ.get("MAX_BOT_TOKEN", "").strip()
 MAX_CHAT = os.environ.get("MAX_CHAT_ID", "").strip()
 POLLINATIONS_API = "https://image.pollinations.ai/prompt/"
 
-BOOK_TAGS = "#ПавелГнесюк #книги #авторскийблог #писатель #лонгрид"
-MYSTERY_TAGS = "#ПавелГнесюк #тайны #история #загадки #лонгрид"
+BOOK_TAGS = "#ПавелГнесюк #книги #авторскийблог #писатель"
+MYSTERY_TAGS = "#ПавелГнесюк #тайны #история #загадки"
 RU = "\n\nВАЖНО: Пиши ТОЛЬКО на русском языке."
 
 GROQ_MODELS = ["meta-llama/llama-4-scout-17b-16e-instruct", "llama-3.1-8b-instant"]
@@ -38,6 +39,7 @@ META_BAN = (
     "НЕ делай коротких строк-подзаголовков без продолжения. "
     "Пиши сплошным связным текстом с абзацами. "
     "Первая строка должна быть КОНКРЕТНОЙ СЦЕНОЙ или ДЕЙСТВИЕМ. "
+    "СТРОГО ЗАПРЕЩЕНО добавлять хештеги в конец текста, они будут добавлены автоматически."
 )
 
 # Файлы кэша
@@ -48,7 +50,7 @@ MAX_HISTORY = "max_history.json"
 def log(msg):
     print(msg, flush=True)
 
-log("Версия ℹ️ gnesyuk-max-agent v2.0 (чередование книг/тайн по дням месяца)")
+log("Версия ℹ️ gnesyuk-max-agent v2.1 (чередование книг/тайн + авто-подвал с ЛитРес)")
 
 # ============================================================
 # ИИ-ТЕКСТ (GigaChat → Groq)
@@ -350,10 +352,29 @@ def main():
         log("❌ ИИ не смог сгенерировать текст нужной длины.")
         raise SystemExit(1)
     
+    # 6. ПОСТ-ОБРАБОТКА ТЕКСТА (Идеальный подвал)
     post = clean_txt(post)
+    
+    # 1. Принудительно убираем любые хештеги, которые ИИ всё-таки мог добавить в конец
+    post = re.sub(r'\n*#(?:ПавелГнесюк|книги|авторскийблог|писатель|тайны|история|загадки|лонгрид)[\wа-яА-Я#]*', '', post, flags=re.IGNORECASE).strip()
+    
+    # 2. Формируем чистый хештег из названия темы (убираем пробелы, двоеточия и спецсимволы)
+    clean_topic = re.sub(r'[^a-zA-Zа-яА-Я0-9]', '', topic_key)
+    
+    # 3. Добавляем финальные хештеги и ссылку на ЛитРес
+    if topics_file == "max_books_topics.json":
+        final_tags = f"\n\n#{clean_topic}\n{BOOK_TAGS}"
+    else:
+        final_tags = f"\n\n#{clean_topic}\n{MYSTERY_TAGS}"
+        
+    cta = "\n\nКниги Павла Гнесюка читайте в ЛитРес, https://www.litres.ru/author/pavel-gnesuk/"
+    
+    # Собираем финальный текст
+    post = post + final_tags + cta
+    
     log(f"📝 Итоговый пост: {len(post)} симв.")
 
-    # 6. ГЕНЕРАЦИЯ КАРТИНКИ
+    # 7. ГЕНЕРАЦИЯ КАРТИНКИ
     log("🎨 Генерация картинки...")
     run_no = int(os.environ.get("GITHUB_RUN_NUMBER", "0"))
     raw_img = download_image(img_prompt, day + 5000000 + (run_no % 100))
@@ -365,10 +386,10 @@ def main():
         with open(img_file, "wb") as f: f.write(img_bytes)
         log(f"🖼 Картинка сохранена: {img_file}")
 
-    # 7. ПУБЛИКАЦИЯ
+    # 8. ПУБЛИКАЦИЯ
     ok = max_post(img_bytes, post)
 
-    # 8. ОБНОВЛЕНИЕ КЭША
+    # 9. ОБНОВЛЕНИЕ КЭША
     used_list = load_json(MAX_USED, [])
     if topic_key not in used_list:
         used_list.append(topic_key)
