@@ -12,5 +12,12 @@
   "source_file": "mysteries.json",
   "topic": "Библиотека Александрии",
   "len": 2540
+ },
+ {
+  "date": "2026-11-19",
+  "day_parity": "odd",
+  "source_file": "max_books_topics.json",
+  "topic": "Анализ героя: Никита Григорьев (Аркадий Дедовских)",
+  "len": 3214
  }
 ]
