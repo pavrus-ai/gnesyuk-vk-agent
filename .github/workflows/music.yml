@@ -1,52 +1,59 @@
-name: Publish music to VK
+name: Music Agent
 
 on:
   schedule:
-    - cron: "30 6 * * *"       # 09:30 МСК — публикация музыки (через 3.5 часа после книг в 06:00)
-    - cron: "0 9,15 * * *"     # ТИКИ: 12:00 и 18:00 МСК — допубликация pending
-  workflow_dispatch:
+    # ВАЖНО: эта строка должна ТОЧНО совпадать с PUBLISH_CRON в music_agent.py ("30 6 * * *")
+    - cron: "30 6 * * *"          # 09:30 МСК — режим ПУБЛИКАЦИЯ
+    # ТИКИ для допубликации pending_music.json.
+    # Оставьте ВАШИ текущие строки тиков, если они отличаются:
+    - cron: "0 9,12,15,18,21 * * *"
+  workflow_dispatch:               # ручной запуск (работает как публикация)
 
 permissions:
-  contents: write
+  contents: write                  # нужно для коммита state-файлов
+
+concurrency:
+  group: music-agent
+  cancel-in-progress: false        # два запуска не должны идти одновременно
 
 jobs:
-  publish:
+  music:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Оформить репо
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Setup Python
+      - name: Настройка Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
+      - name: Установка зависимостей
         run: pip install requests Pillow
 
-      - name: Run music agent
+      - name: Запустите music-agent
         env:
-          SCHEDULE: ${{ github.event.schedule }}
           VK_TOKEN: ${{ secrets.VK_TOKEN }}
           VK_USER_TOKEN: ${{ secrets.VK_USER_TOKEN }}
           VK_GROUP_ID: ${{ secrets.VK_GROUP_ID }}
+          SCHEDULE: ${{ github.event.schedule }}   # агент по этой строке отличает публикацию от тика
         run: python music_agent.py
 
-      - name: Commit covers cache
-        if: always()
+      - name: Зафиксировать state-файлы (кэш, pending, журнал)
+        if: always()                                 # выполняется даже при сбое публикации
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          for f in covers_cache.json pending_music.json; do
-            if [ -f "$f" ]; then git add "$f"; fi
-          done
-          if [ -d covers ]; then git add covers/; fi
-          if ! git diff --quiet || ! git diff --staged --quiet; then
-            git commit -m "chore: music caches [skip ci]"
-            git push
+          git add covers_cache.json pending_music.json track_journal.json || true
+          if git diff --cached --quiet; then
+            echo "✅ State-файлы не изменились"
           else
-            echo "Коммитить нечего"
+            git commit -m "chore: music agent state [skip ci]"
+            git pull --rebase origin "${GITHUB_REF_NAME}" || true
+            git push
+            echo "✅ State-файлы закоммичены (включая журнал треков)"
           fi
