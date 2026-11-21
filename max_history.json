@@ -26,5 +26,12 @@
   "source_file": "mysteries.json",
   "topic": "Стоунхендж",
   "len": 2386
+ },
+ {
+  "date": "2026-11-21",
+  "day_parity": "odd",
+  "source_file": "max_books_topics.json",
+  "topic": "Анализ антагониста: Система «Лимб» и Тень",
+  "len": 3821
  }
 ]
