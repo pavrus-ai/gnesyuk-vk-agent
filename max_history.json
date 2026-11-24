@@ -40,5 +40,12 @@
   "source_file": "mysteries.json",
   "topic": "Ковчег Завета",
   "len": 2289
+ },
+ {
+  "date": "2026-11-24",
+  "day_parity": "even",
+  "source_file": "mysteries.json",
+  "topic": "Большой Сфинкс",
+  "len": 2210
  }
 ]
